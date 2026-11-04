@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Orkivo root .gitignore
+# ---------------------------------------------------------------------------
+
+# Environment & secrets (see section 9.1 of the architecture doc)
+.env
+.env.*
+!.env.example
+
+# Python / backend
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv-cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
+htmlcov/
+
+# Local databases (SQLite sandbox mode)
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / frontend
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local-only docs (never push to GitHub)
+guide.md
+
+# Misc
+*.log
+tmp/

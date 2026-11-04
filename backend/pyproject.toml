@@ -1,0 +1,59 @@
+[project]
+name = "orkivo-backend"
+version = "0.1.0"
+description = "Orkivo backend --- FastAPI modular monolith (initial baseline)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.162.0",
+    "pydantic-settings>=2.16.2",
+    "sqlalchemy>=2.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+filterwarnings = ["error"]
+markers = [
+    "unit: unit tests for domain rules and application services",
+    "api: HTTP behavior and response-contract tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = "migrations.*"
+ignore_errors = true

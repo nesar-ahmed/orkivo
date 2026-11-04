@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Orkivo design tokens
+   Single source of truth for color, radius and type (architecture doc 8.3).
+   Components must consume these semantic tokens, not raw palette values.
+--------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces & text */
+  --background: #f8f8fa;
+  --foreground: #1c1c24;
+  --card: #ffffff;
+  --card-foreground: #1c1c24;
+  --muted: #ededf2;
+  --muted-foreground: #6b6b78;
+  --border: #dcdce4;
+
+  /* Brand (primary) */
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-foreground: #ffffff;
+
+  /* Focus */
+  --ring: #4f46e5;
+
+  /* Semantic state colors */
+  --success: #047857; /* done */
+  --success-foreground: #ffffff;
+  --warning: #b45309; /* in progress */
+  --warning-foreground: #ffffff;
+  --info: #0369a1; /* medium emphasis */
+  --info-foreground: #ffffff;
+  --danger: #be123c; /* high priority / destructive */
+  --danger-foreground: #ffffff;
+
+  /* Shape */
+  --radius: 0.625rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0c0c12;
+    --foreground: #e7e7ee;
+    --card: #16161e;
+    --card-foreground: #e7e7ee;
+    --muted: #1f1f29;
+    --muted-foreground: #9a9aa8;
+    --border: #2b2b37;
+
+    --primary: #6366f1;
+    --primary-hover: #818cf8;
+    --primary-foreground: #ffffff;
+
+    --ring: #818cf8;
+
+    --success: #34d399;
+    --success-foreground: #052e22;
+    --warning: #fbbf24;
+    --warning-foreground: #451a03;
+    --info: #38bdf8;
+    --info-foreground: #082f3a;
+    --danger: #fb7185;
+    --danger-foreground: #4c0519;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere (architecture doc 8.3). */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
