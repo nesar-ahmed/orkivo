@@ -2,12 +2,14 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PlatformNav } from "@/components/layout/platform-nav";
-import { DirectoryPagination, UserSearchForm } from "@/features/users";
+import { Pagination } from "@/components/ui/pagination";
+import { UserSearchForm } from "@/features/users";
 import { TenantTable, fetchTenants } from "@/features/workspaces";
 import { WORKSPACE_KIND_LABELS } from "@/features/workspaces/workspace-utils";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import { getServerCookieHeader } from "@/lib/api/server-cookies";
+import { parsePageParam } from "@/lib/utils/page-param";
 import type { TenantListResponse, WorkspaceKind } from "@/types/workspace";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +35,7 @@ export default async function PlatformTenantsPage({ searchParams }: PageProps) {
   const { search: rawSearch, kind: rawKind, page: rawPage } = await searchParams;
   const search = rawSearch?.trim() ? rawSearch.trim().slice(0, 200) : undefined;
   const kind = KINDS.includes(rawKind as WorkspaceKind) ? (rawKind as WorkspaceKind) : undefined;
-  const page = clampPage(rawPage);
+  const page = parsePageParam(rawPage);
   const cookie = await getServerCookieHeader();
 
   let tenants: TenantListResponse;
@@ -57,8 +59,11 @@ export default async function PlatformTenantsPage({ searchParams }: PageProps) {
       </div>
 
       <p className="max-w-2xl text-xs text-muted-foreground">
-        Suspending stops a company admitting new members and is reversible; it deletes nothing.
-        Content belongs to the tenant, and no part of this console reads it.
+        Suspending puts a company in view mode: its members still see its tasks and people, but
+        nothing is added, changed or removed, and nobody joins or leaves. It is reversible and
+        deletes nothing. Private workspaces are never suspended &mdash; to stop an individual,
+        disable the account under Accounts. Content belongs to the tenant, and no part of this
+        console reads it.
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -83,7 +88,7 @@ export default async function PlatformTenantsPage({ searchParams }: PageProps) {
 
       <TenantTable tenants={tenants.items} />
 
-      <DirectoryPagination
+      <Pagination
         page={tenants.page}
         pages={tenants.pages}
         total={tenants.total}
@@ -152,11 +157,4 @@ function NotForMembers() {
       </EmptyState>
     </section>
   );
-}
-
-/** A hand-typed ``?page=`` must not become a 422 or an empty table. */
-function clampPage(value: string | undefined): number {
-  const parsed = Number(value ?? 1);
-  if (!Number.isInteger(parsed)) return 1;
-  return Math.min(Math.max(parsed, 1), 10_000);
 }

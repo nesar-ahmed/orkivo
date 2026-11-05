@@ -13,14 +13,18 @@ import type { WorkspaceInvite } from "@/types/workspace";
  * The company's invitation history.
  *
  * Open offers are listed with the ones already resolved, because an admin who
- * revoked something should be able to see that they did.
+ * revoked something should be able to see that they did. `canRevoke` comes from
+ * the workspace's capabilities: in view mode the history stays visible, but
+ * nothing can be withdrawn.
  */
 export function InviteTable({
   workspaceId,
   invites,
+  canRevoke,
 }: {
   workspaceId: string;
   invites: WorkspaceInvite[];
+  canRevoke: boolean;
 }) {
   if (invites.length === 0) {
     return (
@@ -32,7 +36,10 @@ export function InviteTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+    // `relative` matters: screen-reader-only labels are absolutely positioned, and
+    // only a *positioned* scroll container clips them. Without it they poke out
+    // past a phone's edge and the whole page scrolls sideways.
+    <div className="relative overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
       <table className="w-full min-w-[30rem] text-left text-sm">
         <caption className="sr-only">
           Invitations for this workspace, the role offered and whether it was taken.
@@ -73,7 +80,7 @@ export function InviteTable({
                 </span>
               </td>
               <td className="px-4 py-3 text-right align-top">
-                {invite.status === "pending" ? (
+                {canRevoke && invite.status === "pending" ? (
                   <RevokeInviteButton workspaceId={workspaceId} invite={invite} />
                 ) : null}
               </td>

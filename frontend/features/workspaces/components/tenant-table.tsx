@@ -28,7 +28,10 @@ export function TenantTable({ tenants }: { tenants: TenantAdmin[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+    // `relative` matters: screen-reader-only labels are absolutely positioned, and
+    // only a *positioned* scroll container clips them. Without it they poke out
+    // past a phone's edge and the whole page scrolls sideways.
+    <div className="relative overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
       <table className="w-full min-w-[40rem] text-left text-sm">
         <caption className="sr-only">
           Every tenant on the platform: kind, head count, lifecycle state and age.

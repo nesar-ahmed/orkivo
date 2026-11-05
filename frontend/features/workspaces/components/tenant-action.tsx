@@ -16,8 +16,14 @@ import type { TenantAdmin } from "@/types/workspace";
  *
  * A note is required to suspend: an unexplained switch-off is the kind of thing
  * nobody can answer a week later, and the note is the only history this surface
- * keeps. Suspension stops the company&rsquo;s people from being added to it; it
- * deletes nothing, so restoring is safe.
+ * keeps. Suspension puts the company in view mode for its members (the backend's
+ * access policy decides exactly what that means); it deletes nothing, so restoring
+ * is safe.
+ *
+ * A private workspace is never suspended --- the backend refuses it --- so no
+ * Suspend button is offered for one. An individual is stopped by disabling the
+ * account instead. Restore stays available, so an older suspended row can be
+ * cleared.
  */
 export function TenantAction({ tenant }: { tenant: TenantAdmin }) {
   const router = useRouter();
@@ -60,6 +66,14 @@ export function TenantAction({ tenant }: { tenant: TenantAdmin }) {
           </p>
         ) : null}
       </div>
+    );
+  }
+
+  if (tenant.kind === "personal") {
+    return (
+      <span className="max-w-44 text-right text-xs text-muted-foreground">
+        Private &mdash; disable the account to stop it
+      </span>
     );
   }
 

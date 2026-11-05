@@ -4,6 +4,7 @@ export { LoginForm } from "./components/login-form";
 export { RegisterForm } from "./components/register-form";
 export { SessionRecovery } from "./components/session-recovery";
 export { SignOutButton } from "./components/sign-out-button";
+export { useSignOut } from "./components/use-sign-out";
 export {
   APP_PREFIX,
   AUTH_PATHS,

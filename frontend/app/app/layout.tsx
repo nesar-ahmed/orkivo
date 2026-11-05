@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { isUnauthenticated, readCurrentUserOnce } from "@/features/auth";
+import { readMyWorkspacesOnce } from "@/features/workspaces";
 import { getServerCookieHeader } from "@/lib/api/server-cookies";
 import type { User } from "@/types/auth";
+import type { Workspace } from "@/types/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -34,5 +36,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     throw error;
   }
 
-  return <AppShell user={user}>{children}</AppShell>;
+  // The switcher's list. Read after the session is confirmed, and optional: if
+  // it fails, the shell still renders and the switcher falls back to a link.
+  let workspaces: Workspace[] | null = null;
+  try {
+    workspaces = (await readMyWorkspacesOnce(cookie)).items;
+  } catch {
+    workspaces = null;
+  }
+
+  return (
+    <AppShell user={user} workspaces={workspaces}>
+      {children}
+    </AppShell>
+  );
 }

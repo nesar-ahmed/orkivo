@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   acceptInvitation,
   declineInvitation,
 } from "@/features/workspaces/api/workspace-mutations";
-import { WORKSPACE_ROLE_LABELS } from "@/features/workspaces/workspace-utils";
+import { WORKSPACE_ROLE_LABELS, workspacePath } from "@/features/workspaces/workspace-utils";
 import { feedbackFromError } from "@/lib/api/form-feedback";
 import { formatAccountDate } from "@/features/users/user-utils";
 import type { WorkspaceInvitation } from "@/types/workspace";
@@ -36,9 +37,9 @@ export function InvitationInbox({ invitations }: { invitations: WorkspaceInvitat
       try {
         if (action === "accept") {
           const joined = await acceptInvitation(invitation.id);
-          // Landing on the company you just joined reads better than a toast that
+          // Landing on the board you just joined reads better than a toast that
           // says you are now somewhere you cannot see.
-          router.push(`/app/workspaces/${joined.id}/people`);
+          router.push(workspacePath(joined, "tasks"));
         } else {
           await declineInvitation(invitation.id);
         }
@@ -85,17 +86,27 @@ export function InvitationInbox({ invitations }: { invitations: WorkspaceInvitat
                 {invitation.invited_by_name ? ` · by ${invitation.invited_by_name}` : ""} ·{" "}
                 {formatAccountDate(invitation.created_at)}
               </p>
+              {invitation.can_accept ? null : (
+                <p className="mt-1 text-xs text-warning">
+                  On hold: this company is suspended, so nobody can join until it is restored.
+                  The offer stays here.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={() => act(invitation, "accept")}
-                disabled={busyId !== null || isPending}
-                aria-label={`Join ${invitation.workspace_name}`}
-              >
-                {busyId === invitation.id ? "Working…" : "Join"}
-              </Button>
+              {invitation.can_accept ? (
+                <Button
+                  size="sm"
+                  onClick={() => act(invitation, "accept")}
+                  disabled={busyId !== null || isPending}
+                  aria-label={`Join ${invitation.workspace_name}`}
+                >
+                  {busyId === invitation.id ? "Working…" : "Join"}
+                </Button>
+              ) : (
+                <Badge variant="warning">On hold</Badge>
+              )}
               <Button
                 variant="ghost"
                 size="sm"

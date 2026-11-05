@@ -8,6 +8,7 @@ import {
   WORKSPACE_ROLE_LABELS,
   WORKSPACE_STATUS_BADGES,
   WORKSPACE_STATUS_LABELS,
+  workspacePath,
 } from "@/features/workspaces/workspace-utils";
 import type { Workspace } from "@/types/workspace";
 
@@ -50,9 +51,15 @@ export function WorkspaceList({ teams }: { teams: Workspace[] }) {
             </Badge>
           ) : null}
 
+          <Link
+            href={workspacePath(team, "tasks")}
+            className="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+          >
+            Tasks
+          </Link>
           {team.kind === "team" ? (
             <Link
-              href={`/app/workspaces/${team.id}/people`}
+              href={workspacePath(team, "people")}
               className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-card px-3 text-xs font-medium text-card-foreground hover:bg-muted"
             >
               People

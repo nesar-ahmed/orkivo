@@ -7,26 +7,30 @@ import {
   WORKSPACE_ROLE_BADGES,
   WORKSPACE_ROLE_LABELS,
 } from "@/features/workspaces/workspace-utils";
-import type { WorkspaceMember, WorkspaceRole } from "@/types/workspace";
+import type { WorkspaceCapability, WorkspaceMember, WorkspaceRole } from "@/types/workspace";
 
 /**
  * A company's people.
  *
- * Which controls appear follows what the API will accept: role changes are an
- * owner&rsquo;s act, an admin may remove members but not the owner, and anyone may
- * leave. That is presentation, not permission --- each action is still authorized
- * per request (architecture doc 8.2).
+ * Which controls appear follows the workspace's `capabilities`, computed by the
+ * backend's access policy: `change_roles`, `manage` (remove others) and `leave`.
+ * In view mode (a suspended company) none of them is present, so the table is
+ * read-only without restating that rule here. The one rule about the *target*
+ * --- only an owner removes an owner --- mirrors the service. Each action is still
+ * authorized per request (architecture doc 8.2).
  */
 export function MemberTable({
   workspaceId,
   members,
   actorId,
   myRole,
+  capabilities,
 }: {
   workspaceId: string;
   members: WorkspaceMember[];
   actorId: string;
   myRole: WorkspaceRole;
+  capabilities: readonly WorkspaceCapability[];
 }) {
   if (members.length === 0) {
     return (
@@ -37,10 +41,15 @@ export function MemberTable({
     );
   }
 
-  const mayChangeRoles = myRole === "owner";
+  const mayChangeRoles = capabilities.includes("change_roles");
+  const mayRemoveOthers = capabilities.includes("manage");
+  const mayLeave = capabilities.includes("leave");
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+    // `relative` matters: screen-reader-only labels are absolutely positioned, and
+    // only a *positioned* scroll container clips them. Without it they poke out
+    // past a phone's edge and the whole page scrolls sideways.
+    <div className="relative overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
       <table className="w-full min-w-[36rem] text-left text-sm">
         <caption className="sr-only">
           Members of this workspace, their role in it, and when they joined.
@@ -64,10 +73,9 @@ export function MemberTable({
         <tbody className="divide-y divide-border">
           {members.map((member) => {
             const isActor = member.user_id === actorId;
-            const mayRemove =
-              isActor ||
-              (mayChangeRoles && !isActor) ||
-              (myRole === "admin" && member.role !== "owner" && !isActor);
+            const mayRemove = isActor
+              ? mayLeave
+              : mayRemoveOthers && (member.role !== "owner" || myRole === "owner");
 
             return (
               <tr key={member.id}>

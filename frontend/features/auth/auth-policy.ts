@@ -10,8 +10,12 @@
 export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_LENGTH = 128;
 
-/** Where a signed-in visitor belongs when nothing else was asked for. */
-export const DEFAULT_POST_AUTH_PATH = "/app/dashboard";
+/**
+ * Where a signed-in visitor belongs when nothing else was asked for: the private
+ * board, directly. (`/app/dashboard` still redirects there, for old bookmarks,
+ * but signing in should not cost an extra redirect.)
+ */
+export const DEFAULT_POST_AUTH_PATH = "/app/personal/tasks";
 
 /** Prefix of the authenticated product surface; `/` itself is public. */
 export const APP_PREFIX = "/app";

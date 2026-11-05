@@ -49,7 +49,7 @@ export default async function WorkspacesPage() {
         ) : null}
       </section>
 
-      <aside className="md:sticky md:top-20 md:self-start">
+      <aside id="create" className="scroll-mt-20 md:sticky md:top-20 md:self-start">
         <CreateWorkspaceForm />
       </aside>
     </div>

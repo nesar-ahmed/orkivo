@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createWorkspace } from "@/features/workspaces/api/workspace-mutations";
+import { workspacePath } from "@/features/workspaces/workspace-utils";
 import { feedbackFromError } from "@/lib/api/form-feedback";
 
 /**
@@ -33,7 +34,8 @@ export function CreateWorkspaceForm() {
     startTransition(async () => {
       try {
         const team = await createWorkspace({ name: name.trim(), slug: effectiveSlug });
-        router.push(`/app/workspaces/${team.id}/people`);
+        // Straight to the people page: a new company's first job is inviting them.
+        router.push(workspacePath(team, "people"));
         router.refresh();
       } catch (error) {
         const feedback = feedbackFromError(error, "The company could not be opened.");

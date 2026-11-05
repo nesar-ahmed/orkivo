@@ -44,6 +44,17 @@ export function fetchWorkspace(workspaceId: string, cookie?: string): Promise<Wo
   return apiClient.get<Workspace>(`/workspaces/${workspaceId}`, cookie ? { cookie } : {});
 }
 
+/**
+ * A company by its address, the name that appears in its URLs. A company the
+ * caller is not in answers 404, exactly like one that was never registered.
+ */
+export function fetchWorkspaceBySlug(slug: string, cookie?: string): Promise<Workspace> {
+  return apiClient.get<Workspace>(
+    `/workspaces/by-slug/${encodeURIComponent(slug)}`,
+    cookie ? { cookie } : {},
+  );
+}
+
 /** A company's people. Any member may read the list; outsiders get 404. */
 export function fetchMembers(
   workspaceId: string,

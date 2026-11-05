@@ -10,7 +10,9 @@ export { RemoveMemberButton } from "./components/remove-member-button";
 export { RevokeInviteButton } from "./components/revoke-invite-button";
 export { TenantAction } from "./components/tenant-action";
 export { TenantTable } from "./components/tenant-table";
+export { WorkspaceHeader } from "./components/workspace-header";
 export { WorkspaceList } from "./components/workspace-list";
+export { WorkspaceSwitcher } from "./components/workspace-switcher";
 export {
   fetchInvites,
   fetchMembers,
@@ -18,7 +20,13 @@ export {
   fetchMyWorkspaces,
   fetchTenants,
   fetchWorkspace,
+  fetchWorkspaceBySlug,
 } from "./api/workspace-queries";
+export {
+  readMyWorkspacesOnce,
+  readPersonalWorkspace,
+  readWorkspaceBySlugOnce,
+} from "./api/workspace-session";
 export {
   acceptInvitation,
   activateTenant,
@@ -41,6 +49,16 @@ export {
   WORKSPACE_ROLE_LABELS,
   WORKSPACE_STATUS_BADGES,
   WORKSPACE_STATUS_LABELS,
+  COMPANY_WORKSPACE_PREFIX,
+  PERSONAL_WORKSPACE_PATH,
+  SLUG_PATTERN,
+  findWorkspaceForPath,
+  hasCapability,
   isShared,
+  normalizeSlug,
+  taskPath,
+  workspacePath,
+  workspaceRefFromPath,
   workspaceTitle,
 } from "./workspace-utils";
+export type { WorkspaceSection } from "./workspace-utils";
