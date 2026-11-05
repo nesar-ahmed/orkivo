@@ -216,13 +216,15 @@ def test_deleting_an_account_removes_its_tasks_by_cascade(
 ) -> None:
 
     user = _register(service, "task-holder")
-    task = TaskService(session).create_task(TaskCreate(title="Ours"), owner_id=user.id)
+    tasks = TaskService(session)
+    personal = tasks.personal_workspace_id(actor=user)
+    task = tasks.create_task(personal, TaskCreate(title="Ours"), actor=user)
 
     session.delete(user)
     session.commit()
 
     with pytest.raises(TaskNotFoundError):
-        TaskService(session).get_task(task.id, owner_id=user.id)
+        TaskService(session).get_task(task.id, actor=user)
 
 
 def test_repository_helpers_find_a_session_by_id(service: AuthService, session: Session) -> None:

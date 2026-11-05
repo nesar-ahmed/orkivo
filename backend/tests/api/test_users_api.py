@@ -235,3 +235,42 @@ def test_demoted_operator_loses_access_without_relogging_in(
     assert operator_client.get(f"{BASE}/users").status_code == 403
     # The same access token still identifies the account for self-service work.
     assert operator_client.get(f"{BASE}/users/me").status_code == 200
+
+
+def test_disabled_account_is_refused_with_a_reason_on_login(
+    operator_client: TestClient, second_client: TestClient, sign_in
+) -> None:
+    """Disabling ends every session and explains the door --- with structured
+    401s, never an unhandled exception (architecture doc section 7)."""
+    target = sign_in(second_client, email=email_for("disable-contract"), password=PASSWORD)
+
+    disabled = operator_client.post(
+        f"{BASE}/users/{target['id']}/disable", json={"reason": "reported abuse"}
+    )
+    assert disabled.status_code == 200, disabled.text
+
+    # The session that already existed is gone.
+    assert second_client.get(f"{BASE}/users/me").status_code == 401
+
+    # A wrong password gets the ordinary answer; only the right one learns why.
+    wrong = second_client.post(
+        f"{BASE}/auth/login", json={"email": target["email"], "password": "wrong-password-12345"}
+    )
+    assert wrong.status_code == 401
+    assert wrong.json()["error"]["code"] == "INVALID_CREDENTIALS"
+
+    right = second_client.post(
+        f"{BASE}/auth/login", json={"email": target["email"], "password": PASSWORD}
+    )
+    assert right.status_code == 401, right.text
+    error = right.json()["error"]
+    assert error["code"] == "ACCOUNT_DISABLED"
+    assert "disabled" in error["message"]
+
+    # Re-enabling lets them sign in again; the old session stays ended.
+    enabled = operator_client.post(f"{BASE}/users/{target['id']}/enable")
+    assert enabled.status_code == 200, enabled.text
+    again = second_client.post(
+        f"{BASE}/auth/login", json={"email": target["email"], "password": PASSWORD}
+    )
+    assert again.status_code == 200, again.text

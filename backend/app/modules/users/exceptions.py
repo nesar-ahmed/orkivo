@@ -30,3 +30,14 @@ class RoleChangeNotAllowedError(Exception):
 
     code = "ROLE_CHANGE_NOT_ALLOWED"
     message = "You cannot change your own role."
+
+
+class AccountStatusChangeNotAllowedError(Exception):
+    """An operator tried to disable or re-enable their own account.
+
+    Refused for the same reason as changing one's own platform role: it is how a
+    console can end up with nobody able to undo the mistake.
+    """
+
+    code = "ACCOUNT_STATUS_CHANGE_NOT_ALLOWED"
+    message = "You cannot disable or enable your own account."

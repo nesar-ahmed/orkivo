@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 from app.modules.users import repository
 from app.modules.users.enums import PlatformRole
 from app.modules.users.exceptions import (
+    AccountStatusChangeNotAllowedError,
     EmailAlreadyInUseError,
     RoleChangeNotAllowedError,
     UserNotFoundError,
 )
 from app.modules.users.models import User
 from app.modules.users.schemas import UserUpdate
+from app.shared.time import utc_now
 
 
 def normalize_email(email: str) -> str:
@@ -127,6 +129,36 @@ class UserService:
         user.platform_role = platform_role
         self._session.flush()
         self._commit()
+        return user
+
+    def set_disabled(
+        self,
+        user_id: uuid.UUID,
+        *,
+        disabled: bool,
+        reason: str | None,
+        actor: User,
+        commit: bool = True,
+    ) -> User:
+        """Stop or restore an account. Operators may not change their own.
+
+        ``commit=False`` lets ``AuthService`` end the account's sessions in the
+        same transaction, so a disabled account never keeps a live session.
+        Re-enabling clears the reason: the record describes the current state.
+        """
+        if actor.id == user_id:
+            raise AccountStatusChangeNotAllowedError
+        user = self.get_user(user_id)
+        if disabled:
+            if user.disabled_at is None:
+                user.disabled_at = utc_now()
+            user.disabled_reason = reason or None
+        else:
+            user.disabled_at = None
+            user.disabled_reason = None
+        self._session.flush()
+        if commit:
+            self._commit()
         return user
 
     def promote_bootstrap_operator(self, user: User, *, bootstrap_email: str | None) -> bool:

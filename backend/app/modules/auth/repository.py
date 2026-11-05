@@ -56,3 +56,17 @@ def revoke_family(
         record.revoked_at = at
     session.flush()
     return len(records)
+
+
+def revoke_all_for_user(session: Session, user_id: uuid.UUID, *, at: datetime) -> int:
+    """End every live session an account holds, across all its devices."""
+    records = session.scalars(
+        select(RefreshSession).where(
+            RefreshSession.user_id == user_id,
+            RefreshSession.revoked_at.is_(None),
+        )
+    ).all()
+    for record in records:
+        record.revoked_at = at
+    session.flush()
+    return len(records)

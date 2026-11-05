@@ -44,3 +44,14 @@ class CsrfCheckFailedError(AuthorizationError):
 
     code = "CSRF_CHECK_FAILED"
     message = "This request was rejected by the session protection policy."
+
+
+class AccountDisabledError(Exception):
+    """The credentials were right, but a platform operator disabled the account.
+
+    Only ever raised *after* the password matched, so it reveals nothing to
+    someone guessing; the owner of the account learns why they cannot get in.
+    """
+
+    code = "ACCOUNT_DISABLED"
+    message = "This account has been disabled. Contact support if you think this is a mistake."

@@ -15,8 +15,13 @@ from starlette.types import ExceptionHandler, Receive, Scope, Send
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.modules.auth.csrf import CsrfMiddleware
-from app.modules.auth.exceptions import AuthenticationError, AuthorizationError, SessionError
-from app.modules.tasks.exceptions import TaskNotFoundError
+from app.modules.auth.exceptions import (
+    AccountDisabledError,
+    AuthenticationError,
+    AuthorizationError,
+    SessionError,
+)
+from app.modules.tasks.exceptions import TaskConflictError, TaskNotFoundError
 from app.modules.users.exceptions import (
     EmailAlreadyInUseError,
     RoleChangeNotAllowedError,
@@ -55,6 +60,7 @@ _STATUS_ERROR_CODES: dict[int, str] = {
 _DOMAIN_ERROR_STATUS: dict[type[Exception], int] = {
     AuthenticationError: 401,
     SessionError: 401,
+    AccountDisabledError: 401,
     AuthorizationError: 403,
     # Workspace tenancy. ``WorkspaceRoleNotAllowedError`` and
     # ``WorkspaceSuspendedError`` are 403 because the caller *is* in the tenant;
@@ -67,6 +73,7 @@ _DOMAIN_ERROR_STATUS: dict[type[Exception], int] = {
     UserNotFoundError: 404,
     EmailAlreadyInUseError: 409,
     RoleChangeNotAllowedError: 409,
+    TaskConflictError: 409,
     WorkspaceSlugInUseError: 409,
     AlreadyMemberError: 409,
     AlreadyInvitedError: 409,

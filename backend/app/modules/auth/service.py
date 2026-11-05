@@ -12,7 +12,8 @@ Two deliberate choices:
   observed (architecture doc section 6.2).
 * **Role is read from the database, never from the token.** A demoted or
   deleted account loses authority on the next request, not when its access
-  token happens to expire.
+  token happens to expire. The same goes for a *disabled* account: every request
+  re-reads it, and disabling revokes its sessions in the same transaction.
 """
 
 import uuid
@@ -24,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.modules.auth import repository, tokens
 from app.modules.auth.exceptions import (
+    AccountDisabledError,
     AuthenticationError,
     InvalidCredentialsError,
     SessionError,
@@ -80,6 +82,9 @@ class AuthService:
         if user is None or not verify_password(data.password, user.password_hash):
             # One generic failure whether the email or the password missed.
             raise InvalidCredentialsError
+        if user.is_disabled:
+            # Only after the password matched: a guesser learns nothing new.
+            raise AccountDisabledError
         if needs_rehash(user.password_hash):
             user.password_hash = hash_password(data.password)
         # The first operator is granted here and never from a request body:
@@ -111,6 +116,9 @@ class AuthService:
 
         user = self._user_by_id(record.user_id)
         repository.revoke(self._session, record, at=utc_now())
+        if user.is_disabled:
+            self._commit()
+            raise SessionError
         return self._start_session(user, family_id=record.family_id)
 
     def logout(self, *, refresh_token: str | None, access_token: str | None) -> None:
@@ -138,7 +146,28 @@ class AuthService:
         if record.user_id != claims.user_id:
             # Token and session row disagree: never trust the claim.
             raise AuthenticationError
-        return self._user_by_id(claims.user_id)
+        user = self._user_by_id(claims.user_id)
+        if user.is_disabled:
+            # Answered like an ended session, so clients simply sign out.
+            raise SessionError
+        return user
+
+    def set_account_disabled(
+        self, user_id: uuid.UUID, *, disabled: bool, reason: str | None, actor: User
+    ) -> User:
+        """Operator use case: stop or restore an account, as one transaction.
+
+        Disabling also revokes every session the account holds. Otherwise
+        re-enabling it later would bring back sessions that may be the very
+        reason it was disabled.
+        """
+        user = self._users.set_disabled(
+            user_id, disabled=disabled, reason=reason, actor=actor, commit=False
+        )
+        if disabled:
+            repository.revoke_all_for_user(self._session, user.id, at=utc_now())
+        self._commit()
+        return user
 
     # --- helpers -----------------------------------------------------------
     def _start_session(self, user: User, *, family_id: uuid.UUID | None = None) -> IssuedSession:

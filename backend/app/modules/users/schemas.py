@@ -35,10 +35,20 @@ class UserRead(BaseModel):
     updated_at: datetime
 
 
+class AccountAdminRead(UserRead):
+    """An account as the platform console sees it: the profile plus its status.
+
+    ``disabled_reason`` is the operator's record and never part of ``/users/me``.
+    """
+
+    disabled_at: datetime | None
+    disabled_reason: str | None
+
+
 class UserListResponse(BaseModel):
     """Paginated collection envelope (architecture doc section 6/7)."""
 
-    items: list[UserRead]
+    items: list[AccountAdminRead]
     total: int
     page: int
     page_size: int
@@ -51,6 +61,14 @@ class UserUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     display_name: DisplayName | None = None
+
+
+class AccountDisable(BaseModel):
+    """Why an account is being disabled, for the operator record."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason: Annotated[str | None, Field(default=None, max_length=500)]
 
 
 class PlatformRoleUpdate(BaseModel):

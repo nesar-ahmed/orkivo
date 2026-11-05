@@ -16,9 +16,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from app.modules.auth.dependencies import CurrentUser, OperatorUser
+from app.modules.auth.dependencies import AuthServiceDep, CurrentUser, OperatorUser
 from app.modules.users.dependencies import UserServiceDep
 from app.modules.users.schemas import (
+    AccountAdminRead,
+    AccountDisable,
     PlatformRoleUpdate,
     UserListResponse,
     UserRead,
@@ -51,7 +53,7 @@ def list_accounts(
     """Operator-only account directory with ``search`` over email/display name."""
     items, total = service.list_users(search=search, page=page, page_size=page_size)
     return UserListResponse(
-        items=[UserRead.model_validate(user) for user in items],
+        items=[AccountAdminRead.model_validate(user) for user in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -59,21 +61,48 @@ def list_accounts(
     )
 
 
-@router.patch("/{user_id}/platform-role", response_model=UserRead)
+@router.patch("/{user_id}/platform-role", response_model=AccountAdminRead)
 def update_platform_role(
     user_id: uuid.UUID,
     payload: PlatformRoleUpdate,
     actor: OperatorUser,
     service: UserServiceDep,
-) -> UserRead:
+) -> AccountAdminRead:
     """Promote or demote a *platform* role. Operators cannot change their own.
 
     The path is spelled out rather than left as ``/role`` because there are two
     role axes in this product, and an ambiguous name is how someone confuses a
     platform operator with a company admin.
     """
-    return UserRead.model_validate(
+    return AccountAdminRead.model_validate(
         service.update_platform_role(user_id, platform_role=payload.platform_role, actor=actor)
+    )
+
+
+@router.post("/{user_id}/disable", response_model=AccountAdminRead)
+def disable_account(
+    user_id: uuid.UUID,
+    payload: AccountDisable,
+    actor: OperatorUser,
+    auth: AuthServiceDep,
+) -> AccountAdminRead:
+    """Stop an account: no sign-in, and every session it holds ends now.
+
+    This is the lever for an individual; a private workspace is never suspended.
+    Operators cannot disable themselves.
+    """
+    return AccountAdminRead.model_validate(
+        auth.set_account_disabled(user_id, disabled=True, reason=payload.reason, actor=actor)
+    )
+
+
+@router.post("/{user_id}/enable", response_model=AccountAdminRead)
+def enable_account(
+    user_id: uuid.UUID, actor: OperatorUser, auth: AuthServiceDep
+) -> AccountAdminRead:
+    """Restore a disabled account. Its old sessions stay ended: it signs in again."""
+    return AccountAdminRead.model_validate(
+        auth.set_account_disabled(user_id, disabled=False, reason=None, actor=actor)
     )
 
 
