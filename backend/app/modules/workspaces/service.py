@@ -1,11 +1,14 @@
 """Application service for workspaces: tenancy, membership and invitations.
 
-This module owns the single rule the rest of the product depends on: **access to
-a tenant comes from a ``workspace_members`` row, read from the database on every
-request**. Nothing in a token, a URL or a frontend decision grants it
-(architecture doc sections 5 and 9).
+This module depends on the single rule the rest of the product depends on:
+**access to a tenant comes from a ``workspace_members`` row, read from the
+database on every request**. Nothing in a token, a URL or a frontend decision
+grants it (architecture doc sections 5 and 9).
 
-Capabilities, enforced here rather than merely displayed in the UI:
+Who may do what --- including the private-workspace rules and what a suspended
+tenant (view mode) still allows --- is decided by ``access.WorkspaceAccessPolicy``
+and its rule table, not here. This service asks it for an action and then applies
+the rules that are about the *target* rather than the caller:
 
 ====================================  ==========  ========  ======  ============
 Operation                             owner       admin     member  not a member
@@ -14,10 +17,12 @@ Read the tenant and its people         yes        yes       yes     404
 Rename the tenant                     yes        yes        --      404
 Invite, revoke, list invitations      yes        yes        --      404
 Remove a member                       yes        yes (1)    --      404
+Leave                                 yes (2)    yes       yes     404
 Change roles                          yes         --        --      404
 ====================================  ==========  ========  ======  ============
 
 (1) an admin may remove members and other admins, never an owner.
+(2) never the last owner.
 
 A non-member is answered with *not found*, never *forbidden*: confirming that a
 tenant exists would make the API an oracle for other companies' names.
@@ -33,8 +38,15 @@ from sqlalchemy.orm import Session
 from app.modules.users.models import User
 from app.modules.users.service import normalize_email
 from app.modules.workspaces import repository
+from app.modules.workspaces.access import (
+    WorkspaceAccess,
+    WorkspaceAccessPolicy,
+    admits_new_members,
+    can_be_suspended,
+)
 from app.modules.workspaces.enums import (
     InviteStatus,
+    WorkspaceAction,
     WorkspaceKind,
     WorkspaceRole,
     WorkspaceStatus,
@@ -76,12 +88,11 @@ RESERVED_SLUGS = frozenset(
     }
 )
 
-_MANAGE_ROLES = (WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
-
 
 class WorkspaceService:
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._access = WorkspaceAccessPolicy(session)
 
     # --- creation ----------------------------------------------------------
     def create_personal_for(self, user: User, *, commit: bool = True) -> Workspace:
@@ -141,36 +152,30 @@ class WorkspaceService:
 
     def get_readable(self, workspace_id: uuid.UUID, *, actor: User) -> Workspace:
         """The tenant, if the caller belongs to it. Outsiders get 404."""
-        workspace, _member = self._membership(workspace_id, actor=actor)
-        return workspace
+        return self._access.require(workspace_id, actor=actor).workspace
 
-    def read_with_role(
-        self, workspace_id: uuid.UUID, *, actor: User
-    ) -> tuple[Workspace, WorkspaceRole]:
-        """The tenant and the caller's role, in one membership resolution.
+    def read_access(self, workspace_id: uuid.UUID, *, actor: User) -> WorkspaceAccess:
+        """The tenant, the caller's role and what it allows, in one resolution.
 
         Returned together because the role is never optional once the tenant is
         readable: asking for it separately invites a second query whose answer
         could differ from the first.
         """
-        workspace, member = self._membership(workspace_id, actor=actor)
-        return workspace, member.role
+        return self._access.require(workspace_id, actor=actor)
 
-    def require_role(
-        self, workspace_id: uuid.UUID, *, actor: User, allowed: Sequence[WorkspaceRole]
-    ) -> Workspace:
-        """The tenant, requiring one of ``allowed`` roles. Outsiders get 404."""
-        workspace, member = self._membership(workspace_id, actor=actor)
-        if member.role not in allowed:
-            raise WorkspaceRoleNotAllowedError
-        return workspace
+    def read_access_by_slug(self, slug: str, *, actor: User) -> WorkspaceAccess:
+        """Like :meth:`read_access`, addressed by the company's URL name.
+
+        A slug the caller is not a member of reads as not found, like an id.
+        """
+        return self._access.require_slug(slug, actor=actor)
 
     def member_role(self, workspace_id: uuid.UUID, user_id: uuid.UUID) -> WorkspaceRole | None:
         member = repository.get_member(self._session, workspace_id, user_id)
         return member.role if member is not None else None
 
     def rename(self, workspace_id: uuid.UUID, data: WorkspaceUpdate, *, actor: User) -> Workspace:
-        workspace = self.require_role(workspace_id, actor=actor, allowed=_MANAGE_ROLES)
+        workspace = self._require(workspace_id, actor, WorkspaceAction.MANAGE)
         workspace.name = data.name
         self._session.flush()
         self._commit()
@@ -191,24 +196,26 @@ class WorkspaceService:
     ) -> None:
         """Remove someone, or let an account leave a company.
 
-        Two invariants: only an owner may remove an owner, and the last owner may
-        not go. A tenant without an owner is a company nobody can administer,
-        visible only to an operator.
+        Leaving is the ``leave`` action and removing someone else is ``manage``;
+        the access policy decides both, including view mode while suspended. Two
+        invariants about the *target* stay here: only an owner may remove an
+        owner, and the last owner may not go. A tenant without an owner is a
+        company nobody can administer, visible only to an operator.
         """
-        workspace, acting = self._membership(workspace_id, actor=actor)
+        access = self._access.require(workspace_id, actor=actor)
+        workspace, acting = access.workspace, access.member
         target = repository.get_member(self._session, workspace.id, member_user_id)
         if target is None:
             # Same shape as "no such tenant": the membership is not confirmable.
             raise WorkspaceNotFoundError(workspace.id)
 
         leaving_alone = acting.id == target.id
+        access.require(WorkspaceAction.LEAVE if leaving_alone else WorkspaceAction.MANAGE)
         if target.role is WorkspaceRole.OWNER:
             if not leaving_alone and acting.role is not WorkspaceRole.OWNER:
                 raise WorkspaceRoleNotAllowedError
             if repository.count_owners(self._session, workspace.id) <= 1:
                 raise LastOwnerError
-        elif not leaving_alone and acting.role not in _MANAGE_ROLES:
-            raise WorkspaceRoleNotAllowedError
 
         repository.remove_member(self._session, target)
         self._commit()
@@ -227,7 +234,7 @@ class WorkspaceService:
         accountable head) but never by invitation, and the last owner cannot be
         demoted out of existence.
         """
-        workspace = self.require_role(workspace_id, actor=actor, allowed=(WorkspaceRole.OWNER,))
+        workspace = self._require(workspace_id, actor, WorkspaceAction.CHANGE_ROLES)
         target = repository.get_member(self._session, workspace.id, member_user_id)
         if target is None:
             raise WorkspaceNotFoundError(workspace.id)
@@ -262,11 +269,8 @@ class WorkspaceService:
         declined or was revoked reopens that row instead of stacking duplicates,
         and an invitation can only ever offer ``member`` or ``admin``.
         """
-        workspace = self.require_role(workspace_id, actor=actor, allowed=_MANAGE_ROLES)
-        if workspace.kind is WorkspaceKind.PERSONAL:
-            raise PersonalWorkspaceError
-        if workspace.status is not WorkspaceStatus.ACTIVE:
-            raise WorkspaceSuspendedError
+        # The policy refuses private workspaces and suspended companies too.
+        workspace = self._require(workspace_id, actor, WorkspaceAction.INVITE)
 
         email = normalize_email(data.email)
         if repository.get_member_by_email(self._session, workspace.id, email) is not None:
@@ -298,7 +302,7 @@ class WorkspaceService:
     def list_invites(
         self, workspace_id: uuid.UUID, *, actor: User, page: int = 1, page_size: int = 20
     ) -> tuple[Sequence[WorkspaceInvite], int, int]:
-        self.require_role(workspace_id, actor=actor, allowed=_MANAGE_ROLES)
+        self._require(workspace_id, actor, WorkspaceAction.VIEW_INVITES)
         items, total = repository.list_invites(
             self._session, workspace_id, page=page, page_size=page_size
         )
@@ -307,7 +311,7 @@ class WorkspaceService:
     def revoke_invite(
         self, workspace_id: uuid.UUID, invite_id: uuid.UUID, *, actor: User
     ) -> WorkspaceInvite:
-        self.require_role(workspace_id, actor=actor, allowed=_MANAGE_ROLES)
+        self._require(workspace_id, actor, WorkspaceAction.MANAGE)
         invite = repository.get_invite(self._session, invite_id)
         if invite is None or invite.workspace_id != workspace_id:
             # Never confirm which tenant an invitation belongs to.
@@ -348,7 +352,7 @@ class WorkspaceService:
         workspace = repository.get_by_id(self._session, invite.workspace_id)
         if workspace is None:
             raise InviteNotPendingError
-        if workspace.status is not WorkspaceStatus.ACTIVE:
+        if not admits_new_members(workspace):
             raise WorkspaceSuspendedError
         if repository.get_member(self._session, workspace.id, actor.id) is not None:
             raise AlreadyMemberError
@@ -381,14 +385,18 @@ class WorkspaceService:
     def set_suspended(
         self, workspace_id: uuid.UUID, *, suspended: bool, note: str | None
     ) -> Workspace:
-        """Operator switch. Members keep their rows; the tenant stops working.
+        """Operator switch. Members keep their rows; the company goes into view mode.
 
         Deliberately not a membership change: suspension is reversible and must
-        not destroy a company's history or its people's place in it.
+        not destroy a company's history or its people's place in it. A private
+        workspace cannot be suspended --- an individual is stopped by disabling
+        the account --- but restoring one is allowed, so older data never sticks.
         """
         workspace = repository.get_by_id(self._session, workspace_id)
         if workspace is None:
             raise WorkspaceNotFoundError(workspace_id)
+        if suspended and not can_be_suspended(workspace):
+            raise PersonalWorkspaceError
         workspace.status = WorkspaceStatus.SUSPENDED if suspended else WorkspaceStatus.ACTIVE
         if note is not None:
             workspace.operator_note = note
@@ -411,21 +419,9 @@ class WorkspaceService:
         return rows, total, _pages(total, page, page_size)
 
     # --- helpers -----------------------------------------------------------
-    def _membership(
-        self, workspace_id: uuid.UUID, *, actor: User
-    ) -> tuple[Workspace, WorkspaceMember]:
-        """Resolve tenant + caller's membership, or the not-found shape.
-
-        Both failures answer identically on purpose: a caller who is not in a
-        tenant must not learn that it exists.
-        """
-        workspace = repository.get_by_id(self._session, workspace_id)
-        if workspace is None:
-            raise WorkspaceNotFoundError(workspace_id)
-        member = repository.get_member(self._session, workspace.id, actor.id)
-        if member is None:
-            raise WorkspaceNotFoundError(workspace_id)
-        return workspace, member
+    def _require(self, workspace_id: uuid.UUID, actor: User, action: WorkspaceAction) -> Workspace:
+        """The tenant, once the access policy allows ``action`` for ``actor``."""
+        return self._access.require(workspace_id, actor=actor, action=action).workspace
 
     def _commit(self) -> None:
         try:

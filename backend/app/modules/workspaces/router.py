@@ -5,9 +5,10 @@ membership and role are resolved from the database rather than from the path or
 the token (architecture doc sections 4.1 and 9). No route here reaches into the
 service's session.
 
-Two ordering rules matter. ``/workspaces/invitations`` is declared before
-``/workspaces/{workspace_id}``, because a UUID path parameter would otherwise
-swallow the word ``invitations`` and answer 422 instead of the invitation list.
+One ordering rule matters. ``/workspaces/invitations`` and
+``/workspaces/by-slug/{slug}`` are declared before ``/workspaces/{workspace_id}``,
+because a UUID path parameter would otherwise swallow the literal segment and
+answer 422 instead of the intended route.
 """
 
 import uuid
@@ -17,10 +18,12 @@ from fastapi import APIRouter, Path, Query, Response, status
 
 from app.modules.auth.dependencies import CurrentUser, OperatorUser
 from app.modules.users.models import User
+from app.modules.workspaces.access import WorkspaceAccess, admits_new_members, allowed_actions
 from app.modules.workspaces.dependencies import WorkspaceServiceDep
 from app.modules.workspaces.enums import WorkspaceKind, WorkspaceRole
 from app.modules.workspaces.models import Workspace, WorkspaceMember
 from app.modules.workspaces.schemas import (
+    SLUG_PATTERN,
     InvitationListResponse,
     InvitationRead,
     InviteCreate,
@@ -45,6 +48,9 @@ platform_router = APIRouter(prefix="/platform/workspaces", tags=["platform"])
 PageParam = Annotated[int, Query(ge=1)]
 PageSizeParam = Annotated[int, Query(ge=1, le=100)]
 WorkspaceId = Annotated[uuid.UUID, Path(description="Tenant identifier.")]
+WorkspaceSlug = Annotated[
+    str, Path(min_length=3, max_length=63, pattern=SLUG_PATTERN, description="Company address.")
+]
 MemberUserId = Annotated[uuid.UUID, Path(description="Account to act on.")]
 
 
@@ -68,7 +74,15 @@ def _workspace_with_role(workspace: Workspace, role: WorkspaceRole) -> Workspace
     the workspace alone would fail on a required field.
     """
     base = WorkspaceRead.model_validate(workspace)
-    return WorkspaceWithRoleRead(**base.model_dump(), my_role=role)
+    return WorkspaceWithRoleRead(
+        **base.model_dump(),
+        my_role=role,
+        capabilities=allowed_actions(role=role, status=workspace.status, kind=workspace.kind),
+    )
+
+
+def _from_access(access: WorkspaceAccess) -> WorkspaceWithRoleRead:
+    return _workspace_with_role(access.workspace, access.role)
 
 
 def _tenant_row(workspace: Workspace, member_count: int) -> TenantAdminRead:
@@ -122,6 +136,8 @@ def list_my_invitations(user: CurrentUser, service: WorkspaceServiceDep) -> Invi
                 workspace_id=workspace.id,
                 workspace_name=workspace.name,
                 workspace_slug=workspace.slug,
+                workspace_status=workspace.status,
+                can_accept=admits_new_members(workspace),
                 role=invite.role,
                 invited_by_name=inviter.display_name if inviter is not None else None,
                 created_at=invite.created_at,
@@ -139,8 +155,7 @@ def accept_invitation(
 ) -> WorkspaceWithRoleRead:
     """Claim an invitation and join, at the role it offered."""
     joined = service.accept_invitation(invite_id, actor=user)
-    workspace, role = service.read_with_role(joined.id, actor=user)
-    return _workspace_with_role(workspace, role)
+    return _from_access(service.read_access(joined.id, actor=user))
 
 
 @router.post(
@@ -159,13 +174,25 @@ def decline_invitation(
 
 
 # --- one tenant ------------------------------------------------------------
+# Declared before ``/{workspace_id}`` so the literal path wins.
+@router.get("/by-slug/{slug}", response_model=WorkspaceWithRoleRead)
+def read_workspace_by_slug(
+    slug: WorkspaceSlug, user: CurrentUser, service: WorkspaceServiceDep
+) -> WorkspaceWithRoleRead:
+    """A company by its address, for the URLs people share. Members only.
+
+    A slug the caller does not belong to answers exactly like one that was never
+    registered, so a URL cannot be used to probe for another company.
+    """
+    return _from_access(service.read_access_by_slug(slug, actor=user))
+
+
 @router.get("/{workspace_id}", response_model=WorkspaceWithRoleRead)
 def read_workspace(
     workspace_id: WorkspaceId, user: CurrentUser, service: WorkspaceServiceDep
 ) -> WorkspaceWithRoleRead:
     """A tenant, for its members. Outsiders receive the not-found shape."""
-    workspace, role = service.read_with_role(workspace_id, actor=user)
-    return _workspace_with_role(workspace, role)
+    return _from_access(service.read_access(workspace_id, actor=user))
 
 
 @router.patch("/{workspace_id}", response_model=WorkspaceRead)

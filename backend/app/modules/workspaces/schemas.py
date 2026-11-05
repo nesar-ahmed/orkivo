@@ -1,8 +1,9 @@
 """Pydantic request/response contracts for the workspaces module.
 
 SQLAlchemy models are never exposed directly, and no contract carries another
-tenant's data: ``my_role`` is included so the frontend can decide what to render
-without ever being the thing that decides (architecture doc sections 7 and 9).
+tenant's data: ``my_role`` and ``capabilities`` are included so the frontend can
+decide what to render without ever being the thing that decides (architecture doc
+sections 7 and 9).
 """
 
 from datetime import datetime
@@ -11,7 +12,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.modules.workspaces.enums import InviteStatus, WorkspaceKind, WorkspaceRole, WorkspaceStatus
+from app.modules.workspaces.enums import (
+    InviteStatus,
+    WorkspaceAction,
+    WorkspaceKind,
+    WorkspaceRole,
+    WorkspaceStatus,
+)
 
 WorkspaceName = Annotated[str, Field(min_length=1, max_length=120)]
 
@@ -81,9 +88,15 @@ class WorkspaceRead(BaseModel):
 
 
 class WorkspaceWithRoleRead(WorkspaceRead):
-    """A tenant plus the caller's standing in it."""
+    """A tenant plus the caller's standing in it.
+
+    ``capabilities`` is what the access policy allows this caller right now ---
+    for example, a suspended company drops ``edit_content`` for everyone. It is a
+    rendering hint computed by the backend; every request is still re-checked.
+    """
 
     my_role: WorkspaceRole
+    capabilities: list[WorkspaceAction]
 
 
 class MemberRead(BaseModel):
@@ -121,6 +134,10 @@ class InvitationRead(BaseModel):
     workspace_id: UUID
     workspace_name: str
     workspace_slug: str | None
+    workspace_status: WorkspaceStatus
+    # Decided by the access policy: a suspended company admits nobody, so the
+    # offer stays visible but cannot be claimed until the company is restored.
+    can_accept: bool
     role: WorkspaceRole
     invited_by_name: str | None
     created_at: datetime

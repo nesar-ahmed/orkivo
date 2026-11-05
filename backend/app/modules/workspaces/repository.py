@@ -4,9 +4,9 @@ Queries only. Whether a role is enough, whether an owner may leave, and every
 other decision belong to the service (architecture doc sections 4.1 and 6.2).
 
 Two habits this module keeps for tenant safety:
-* every workspace lookup that a member triggers goes through
-  :func:`get_member_first`, so "exists" and "you are not in it" cannot be
-  distinguished by timing or by shape;
+* every workspace lookup that a member triggers is authorized by
+  ``access.WorkspaceAccessPolicy``, so "exists" and "you are not in it" answer
+  with the same shape;
 * membership is joined explicitly rather than filtered in Python, so a page of
   members costs one query instead of N.
 """
@@ -33,6 +33,16 @@ def get_by_id(session: Session, workspace_id: uuid.UUID) -> Workspace | None:
 
 def get_by_slug(session: Session, slug: str) -> Workspace | None:
     return session.scalars(select(Workspace).where(Workspace.slug == slug)).first()
+
+
+def get_personal_for(session: Session, user_id: uuid.UUID) -> Workspace | None:
+    """The account's private tenant: the personal workspace it is a member of."""
+    return session.scalars(
+        select(Workspace)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(WorkspaceMember.user_id == user_id, Workspace.kind == WorkspaceKind.PERSONAL)
+        .order_by(Workspace.created_at, Workspace.id)
+    ).first()
 
 
 def get_member(

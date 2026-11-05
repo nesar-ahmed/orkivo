@@ -100,6 +100,43 @@ def test_update_task_moves_status(authed_client: TestClient, make_task: MakeTask
     assert response.json()["status"] == "in_progress"
 
 
+def test_update_task_with_stale_version_returns_409_contract(
+    authed_client: TestClient, make_task: MakeTask
+) -> None:
+    """The optimistic-lock refusal is a documented 409, never an unhandled 500.
+
+    A colleague's newer change must not be silently overwritten, and the
+    frontend's conflict UI depends on ``TASK_CONFLICT`` arriving intact.
+    """
+    task = make_task(title="Shared plan")
+
+    first = authed_client.patch(f"{BASE}/tasks/{task['id']}", json={"status": "in_progress"})
+    assert first.status_code == 200
+    assert first.json()["version"] == task["version"] + 1
+
+    stale = authed_client.patch(
+        f"{BASE}/tasks/{task['id']}",
+        json={"title": "Overwritten?", "version": task["version"]},
+    )
+
+    assert stale.status_code == 409
+    error = stale.json()["error"]
+    assert error["code"] == "TASK_CONFLICT"
+    assert authed_client.get(f"{BASE}/tasks/{task['id']}").json()["title"] == "Shared plan"
+
+
+def test_delete_task_with_stale_version_returns_409(
+    authed_client: TestClient, make_task: MakeTask
+) -> None:
+    task = make_task(title="Racing delete")
+
+    response = authed_client.delete(f"{BASE}/tasks/{task['id']}?version={task['version'] + 5}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "TASK_CONFLICT"
+    assert authed_client.get(f"{BASE}/tasks/{task['id']}").status_code == 200
+
+
 def test_delete_task_returns_204_and_removes(
     authed_client: TestClient, make_task: MakeTask
 ) -> None:

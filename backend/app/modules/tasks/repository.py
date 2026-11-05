@@ -3,6 +3,10 @@
 The repository encapsulates queries only. It does not decide authorization
 policy and does not return HTTP responses; transaction commits happen at the
 service layer (architecture doc sections 4.1 and 6.2).
+
+Who may read a tenant is decided by ``workspaces.access`` before any function
+here runs. The list query still carries the tenant predicate unconditionally, so
+a page of tasks can only ever come from the one workspace that was authorized.
 """
 
 import uuid
@@ -18,19 +22,19 @@ from app.modules.tasks.models import Task
 def list_tasks(
     session: Session,
     *,
-    owner_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
     search: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[Sequence[Task], int]:
-    """Return one page of the owner's tasks plus the total matching count."""
-    # The owner predicate is applied first and unconditionally: no query path
-    # may return rows that belong to somebody else (architecture doc section 9).
+    """Return one page of a tenant's tasks plus the total matching count."""
+    # The tenant predicate is applied first and unconditionally: no query path
+    # may return rows from another workspace (architecture doc section 9).
     stmt: Select[Task] = (
         select(Task)
-        .where(Task.owner_id == owner_id)
+        .where(Task.workspace_id == workspace_id)
         .order_by(Task.created_at.desc(), Task.id.desc())
     )
     if status is not None:
@@ -51,15 +55,14 @@ def list_tasks(
     return items, total
 
 
-def get_task(session: Session, task_id: uuid.UUID, *, owner_id: uuid.UUID) -> Task | None:
-    """Fetch a task only when the caller owns it.
+def get_task(session: Session, task_id: uuid.UUID) -> Task | None:
+    """Fetch a task by id, *before* authorization.
 
-    Filtering in the query rather than checking after the fact means a
-    primary-key read can never hand back another user's row.
+    Deliberately unscoped: which workspace holds the task is exactly what the
+    service needs to know in order to ask the access policy. The service never
+    returns this row, or anything derived from it, until that check has passed.
     """
-    return session.scalars(
-        select(Task).where(Task.id == task_id, Task.owner_id == owner_id)
-    ).first()
+    return session.get(Task, task_id)
 
 
 def add_task(session: Session, task: Task) -> None:

@@ -60,3 +60,34 @@ class InviteStatus(StrEnum):
     ACCEPTED = "accepted"
     DECLINED = "declined"
     REVOKED = "revoked"
+
+
+class WorkspaceAction(StrEnum):
+    """What a caller is trying to do inside one tenant.
+
+    Part of the public API contract: each workspace response lists the actions
+    its caller may perform right now, so the frontend renders the decision made
+    in ``access.py`` instead of re-deriving it. The rule behind each one lives in
+    ``access.ACCESS_RULES``.
+    """
+
+    READ = "read"
+    """See the tenant, its people, and the work stored in it."""
+
+    EDIT_CONTENT = "edit_content"
+    """Create, change or delete work (tasks today; projects and comments later)."""
+
+    LEAVE = "leave"
+    """Give up one's own membership."""
+
+    VIEW_INVITES = "view_invites"
+    """Read the tenant's invitation history."""
+
+    MANAGE = "manage"
+    """Rename the tenant, revoke invitations, remove other people."""
+
+    INVITE = "invite"
+    """Open the tenant to a new address."""
+
+    CHANGE_ROLES = "change_roles"
+    """Move people between owner, admin and member."""
