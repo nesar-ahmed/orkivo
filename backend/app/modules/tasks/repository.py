@@ -18,14 +18,21 @@ from app.modules.tasks.models import Task
 def list_tasks(
     session: Session,
     *,
+    owner_id: uuid.UUID,
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
     search: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[Sequence[Task], int]:
-    """Return one page of tasks plus the total matching count."""
-    stmt: Select[Task] = select(Task).order_by(Task.created_at.desc(), Task.id.desc())
+    """Return one page of the owner's tasks plus the total matching count."""
+    # The owner predicate is applied first and unconditionally: no query path
+    # may return rows that belong to somebody else (architecture doc section 9).
+    stmt: Select[Task] = (
+        select(Task)
+        .where(Task.owner_id == owner_id)
+        .order_by(Task.created_at.desc(), Task.id.desc())
+    )
     if status is not None:
         stmt = stmt.where(Task.status == status)
     if priority is not None:
@@ -44,8 +51,15 @@ def list_tasks(
     return items, total
 
 
-def get_task(session: Session, task_id: uuid.UUID) -> Task | None:
-    return session.get(Task, task_id)
+def get_task(session: Session, task_id: uuid.UUID, *, owner_id: uuid.UUID) -> Task | None:
+    """Fetch a task only when the caller owns it.
+
+    Filtering in the query rather than checking after the fact means a
+    primary-key read can never hand back another user's row.
+    """
+    return session.scalars(
+        select(Task).where(Task.id == task_id, Task.owner_id == owner_id)
+    ).first()
 
 
 def add_task(session: Session, task: Task) -> None:

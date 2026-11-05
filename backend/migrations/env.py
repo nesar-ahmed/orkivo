@@ -13,7 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings  # noqa: E402
 from app.core.db import Base  # noqa: E402
-from app.modules.tasks import models  # noqa: E402,F401  (registers tables on Base.metadata)
+
+# Every module's models are imported so ``Base.metadata`` holds the full schema
+# and autogenerate cannot miss a table (architecture doc section 6).
+from app.modules.auth import models as auth_models  # noqa: E402,F401
+from app.modules.tasks import models as task_models  # noqa: E402,F401
+from app.modules.users import models as user_models  # noqa: E402,F401
+from app.modules.workspaces import models as workspace_models  # noqa: E402,F401
 
 config = context.config
 

@@ -4,17 +4,25 @@ Baseline schema rules (architecture doc section 6): UUID primary keys,
 timezone-aware UTC timestamps, ``created_at``/``updated_at``, explicit
 indexes and database constraints for hard invariants.
 
-Note: ``project_id``/``workspace_id`` foreign keys arrive when the
-``projects`` and ``workspaces`` modules are added in a later stage.
+Every task belongs to the user that created it. ``owner_id`` is not null and is
+part of the primary lookup path for every read, so cross-user data cannot leak
+through a query (architecture doc section 6/9).
+
+The ``workspaces`` module has landed and ``projects`` has not, so a task today is
+effectively work in its owner's *personal* tenant: ``owner_id`` is still the
+authorization boundary. The next revision adds ``workspace_id`` (backfilled from
+each owner's personal workspace, then required) so a company can hold shared
+tasks; until then a tenant has members but no content.
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     String,
     Text,
     Uuid,
@@ -24,11 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.modules.tasks.enums import TaskPriority, TaskStatus
-
-
-def utc_now() -> datetime:
-    """Timezone-aware UTC now, used for Python-side timestamp defaults."""
-    return datetime.now(UTC)
+from app.shared.time import utc_now
 
 
 class Task(Base):
@@ -40,6 +44,12 @@ class Task(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE", name="fk_tasks_owner_id_users"),
+        nullable=False,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(

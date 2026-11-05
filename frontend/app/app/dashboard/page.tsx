@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskForm, TaskList } from "@/features/tasks";
 import { fetchTasks } from "@/features/tasks/api/task-queries";
 import { ApiError } from "@/lib/api/client";
+import { getServerCookieHeader } from "@/lib/api/server-cookies";
 import { cn } from "@/lib/utils/cn";
 import type { TaskListResponse } from "@/types/task";
 
@@ -13,13 +14,18 @@ export const metadata = { title: "Tasks" };
 /**
  * Thin page: it composes feature components and handles the
  * loading/empty/error states (architecture doc 8.2/8.3).
+ *
+ * The read runs as the visitor: without the forwarded cookie this server-side
+ * call would be anonymous and the backend would refuse it, which is exactly the
+ * difference between routing and authorization.
  */
 export default async function TasksDashboardPage() {
+  const cookie = await getServerCookieHeader();
   let data: TaskListResponse | null = null;
   let loadError: string | null = null;
 
   try {
-    data = await fetchTasks({ page_size: 100 });
+    data = await fetchTasks({ page_size: 100 }, cookie);
   } catch (err) {
     loadError =
       err instanceof ApiError ? err.message : "Failed to load tasks. Please try again.";
@@ -50,7 +56,7 @@ export default async function TasksDashboardPage() {
             <p className="font-medium">Tasks could not be loaded.</p>
             <p className="mt-1 text-xs">{loadError}</p>
             <Link
-              href="/"
+              href="/app/dashboard"
               className={cn(
                 "mt-3 inline-flex h-8 items-center justify-center rounded-md border border-border",
                 "bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted",

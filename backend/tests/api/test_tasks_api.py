@@ -1,4 +1,9 @@
-"""API tests: HTTP status codes, validation, and response contracts."""
+"""API tests: HTTP status codes, validation, and response contracts.
+
+The tasks API is authenticated, so these run against a client that already
+holds a session; authorization itself is covered in
+``test_tasks_authorization.py``.
+"""
 
 import uuid
 from collections.abc import Callable
@@ -15,14 +20,15 @@ MakeTask = Callable[..., dict[str, Any]]
 
 
 def test_health_reports_database_ok(client: TestClient) -> None:
+    """The readiness probe stays public: no session is required to check health."""
     response = client.get(f"{BASE}/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "database": "ok"}
 
 
-def test_create_task_returns_201_and_public_shape(client: TestClient) -> None:
-    response = client.post(
+def test_create_task_returns_201_and_public_shape(authed_client: TestClient) -> None:
+    response = authed_client.post(
         f"{BASE}/tasks",
         json={"title": "Ship baseline", "priority": "high", "due_date": "2026-12-01"},
     )
@@ -35,10 +41,12 @@ def test_create_task_returns_201_and_public_shape(client: TestClient) -> None:
     assert body["due_date"] == "2026-12-01"
     assert uuid.UUID(body["id"])  # UUID primary key exposed
     assert "created_at" in body and "updated_at" in body
+    # Ownership is an internal detail: it is never part of the contract.
+    assert "owner_id" not in body
 
 
-def test_create_task_rejects_blank_title_with_consistent_error(client: TestClient) -> None:
-    response = client.post(f"{BASE}/tasks", json={"title": "   "})
+def test_create_task_rejects_blank_title_with_consistent_error(authed_client: TestClient) -> None:
+    response = authed_client.post(f"{BASE}/tasks", json={"title": "   "})
 
     assert response.status_code == 422
     error = response.json()["error"]
@@ -46,15 +54,15 @@ def test_create_task_rejects_blank_title_with_consistent_error(client: TestClien
     assert any(detail["field"] == "title" for detail in error["details"])
 
 
-def test_create_task_rejects_unknown_enum(client: TestClient) -> None:
-    response = client.post(f"{BASE}/tasks", json={"title": "x", "status": "archived"})
+def test_create_task_rejects_unknown_enum(authed_client: TestClient) -> None:
+    response = authed_client.post(f"{BASE}/tasks", json={"title": "x", "status": "archived"})
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_get_task_returns_404_contract(client: TestClient) -> None:
-    response = client.get(f"{BASE}/tasks/{uuid.uuid4()}")
+def test_get_task_returns_404_contract(authed_client: TestClient) -> None:
+    response = authed_client.get(f"{BASE}/tasks/{uuid.uuid4()}")
 
     assert response.status_code == 404
     error = response.json()["error"]
@@ -62,11 +70,11 @@ def test_get_task_returns_404_contract(client: TestClient) -> None:
     assert error["message"] == "The requested task was not found."
 
 
-def test_list_tasks_pagination_contract(client: TestClient, make_task: MakeTask) -> None:
+def test_list_tasks_pagination_contract(authed_client: TestClient, make_task: MakeTask) -> None:
     for index in range(3):
         make_task(title=f"Task {index}")
 
-    response = client.get(f"{BASE}/tasks?page=1&page_size=2")
+    response = authed_client.get(f"{BASE}/tasks?page=1&page_size=2")
 
     assert response.status_code == 200
     body = response.json()
@@ -77,28 +85,30 @@ def test_list_tasks_pagination_contract(client: TestClient, make_task: MakeTask)
     assert len(body["items"]) == 2
 
 
-def test_list_tasks_rejects_oversized_page(client: TestClient) -> None:
-    response = client.get(f"{BASE}/tasks?page_size=500")
+def test_list_tasks_rejects_oversized_page(authed_client: TestClient) -> None:
+    response = authed_client.get(f"{BASE}/tasks?page_size=500")
 
     assert response.status_code == 422
 
 
-def test_update_task_moves_status(client: TestClient, make_task: MakeTask) -> None:
+def test_update_task_moves_status(authed_client: TestClient, make_task: MakeTask) -> None:
     task = make_task(title="Move me")
 
-    response = client.patch(f"{BASE}/tasks/{task['id']}", json={"status": "in_progress"})
+    response = authed_client.patch(f"{BASE}/tasks/{task['id']}", json={"status": "in_progress"})
 
     assert response.status_code == 200
     assert response.json()["status"] == "in_progress"
 
 
-def test_delete_task_returns_204_and_removes(client: TestClient, make_task: MakeTask) -> None:
+def test_delete_task_returns_204_and_removes(
+    authed_client: TestClient, make_task: MakeTask
+) -> None:
     task = make_task(title="Delete me")
 
-    response = client.delete(f"{BASE}/tasks/{task['id']}")
+    response = authed_client.delete(f"{BASE}/tasks/{task['id']}")
 
     assert response.status_code == 204
-    assert client.get(f"{BASE}/tasks/{task['id']}").status_code == 404
+    assert authed_client.get(f"{BASE}/tasks/{task['id']}").status_code == 404
 
 
 def test_unknown_route_uses_consistent_error_shape(client: TestClient) -> None:
