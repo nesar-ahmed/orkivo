@@ -3,14 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PlatformNav } from "@/components/layout/platform-nav";
 import { readCurrentUserOnce } from "@/features/auth";
-import {
-  AccountTable,
-  DirectoryPagination,
-  UserSearchForm,
-  fetchUsers,
-} from "@/features/users";
+import { Pagination } from "@/components/ui/pagination";
+import { AccountTable, UserSearchForm, fetchUsers } from "@/features/users";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
+import { parsePageParam } from "@/lib/utils/page-param";
 import { getServerCookieHeader } from "@/lib/api/server-cookies";
 import type { User, UserListResponse } from "@/types/auth";
 
@@ -36,7 +33,7 @@ interface PageProps {
 export default async function PlatformAccountsPage({ searchParams }: PageProps) {
   const { search: rawSearch, page: rawPage } = await searchParams;
   const search = rawSearch?.trim() ? rawSearch.trim().slice(0, 200) : undefined;
-  const page = clampPage(rawPage);
+  const page = parsePageParam(rawPage);
   const cookie = await getServerCookieHeader();
 
   let actor: User;
@@ -72,7 +69,7 @@ export default async function PlatformAccountsPage({ searchParams }: PageProps) 
 
       <AccountTable accounts={directory.items} actorId={actor.id} />
 
-      <DirectoryPagination
+      <Pagination
         page={directory.page}
         pages={directory.pages}
         total={directory.total}
@@ -96,7 +93,7 @@ function NotForMembers() {
         description="The API refused this directory for your account. A platform role is granted by an existing operator, never requested here."
       >
         <Link
-          href="/app/dashboard"
+          href="/app/personal/tasks"
           className={cn(
             "inline-flex h-8 items-center justify-center rounded-md border border-border",
             "bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted",
@@ -107,11 +104,4 @@ function NotForMembers() {
       </EmptyState>
     </section>
   );
-}
-
-/** A hand-typed ``?page=`` must not become a 422 or an empty table. */
-function clampPage(value: string | undefined): number {
-  const parsed = Number(value ?? 1);
-  if (!Number.isInteger(parsed)) return 1;
-  return Math.min(Math.max(parsed, 1), 10_000);
 }
