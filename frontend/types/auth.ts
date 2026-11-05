@@ -22,9 +22,18 @@ export interface User {
   updated_at: string;
 }
 
+/**
+ * An account as the platform console sees it. `disabled_reason` is the operator
+ * record: it is never part of `/users/me`.
+ */
+export interface AccountAdmin extends User {
+  disabled_at: string | null;
+  disabled_reason: string | null;
+}
+
 /** Paginated collection envelope returned by GET /users. */
 export interface UserListResponse {
-  items: User[];
+  items: AccountAdmin[];
   total: number;
   page: number;
   page_size: number;
@@ -49,6 +58,11 @@ export interface RegisterInput extends LoginInput {
 
 export interface UserUpdateInput {
   display_name?: string;
+}
+
+/** Body of POST /users/{id}/disable. Operators only. */
+export interface AccountDisableInput {
+  reason?: string | null;
 }
 
 /** Body of PATCH /users/{id}/platform-role. Operators only. */

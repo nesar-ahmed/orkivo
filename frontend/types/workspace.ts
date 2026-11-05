@@ -16,6 +16,21 @@ export type WorkspaceRole = "owner" | "admin" | "member";
 
 export type InviteStatus = "pending" | "accepted" | "declined" | "revoked";
 
+/**
+ * What the caller may do in a workspace right now, as decided by the backend's
+ * access policy (`workspaces/access.py`). A suspended company is in view mode:
+ * only `read` (and `view_invites` for managers) remain. A private workspace never
+ * offers the group actions (`leave`, `invite`, `view_invites`, `change_roles`).
+ */
+export type WorkspaceCapability =
+  | "read"
+  | "edit_content"
+  | "leave"
+  | "view_invites"
+  | "manage"
+  | "invite"
+  | "change_roles";
+
 interface WorkspaceFields {
   id: string;
   kind: WorkspaceKind;
@@ -30,6 +45,8 @@ interface WorkspaceFields {
 /** A tenant as its member sees it, including the caller's standing. */
 export interface Workspace extends WorkspaceFields {
   my_role: WorkspaceRole;
+  /** Rendering hint only: the API re-checks every request. */
+  capabilities: WorkspaceCapability[];
 }
 
 export interface WorkspaceMember {
@@ -57,6 +74,9 @@ export interface WorkspaceInvitation {
   workspace_id: string;
   workspace_name: string;
   workspace_slug: string | null;
+  workspace_status: WorkspaceStatus;
+  /** Decided by the backend: a suspended company admits nobody for now. */
+  can_accept: boolean;
   role: WorkspaceRole;
   invited_by_name: string | null;
   created_at: string;
