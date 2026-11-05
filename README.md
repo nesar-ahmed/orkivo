@@ -42,7 +42,7 @@ Backend (`backend/`, modular monolith):
   database check constraints for hard invariants, indexed columns, paginated and
   filtered list endpoints.
 - Alembic migrations (`migrations/`), each one reviewed and reversible; pytest
-  unit + API tests (isolated temporary SQLite per test); Ruff + mypy gates.
+  unit + API tests (isolated temporary SQLite per test); mypy gate.
 
 Frontend (`frontend/`):
 
@@ -167,7 +167,6 @@ Backend (run from `backend/`):
 
 ```bash
 uv run pytest                     # unit + API tests
-uv run ruff check . && uv run ruff format --check .
 uv run mypy app
 uv run alembic upgrade head && uv run alembic check   # schema == models
 ```
