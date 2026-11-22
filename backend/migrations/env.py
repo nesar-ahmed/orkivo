@@ -16,7 +16,14 @@ from app.core.db import Base  # noqa: E402
 
 # Every module's models are imported so ``Base.metadata`` holds the full schema
 # and autogenerate cannot miss a table (architecture doc section 6).
+from app.modules.activity import models as activity_models  # noqa: E402,F401
 from app.modules.auth import models as auth_models  # noqa: E402,F401
+from app.modules.automations import models as automation_models  # noqa: E402,F401
+from app.modules.comments import models as comment_models  # noqa: E402,F401
+from app.modules.labels import models as label_models  # noqa: E402,F401
+from app.modules.notifications import models as notification_models  # noqa: E402,F401
+from app.modules.projects import models as project_models  # noqa: E402,F401
+from app.modules.task_dependencies import models as task_dependency_models  # noqa: E402,F401
 from app.modules.tasks import models as task_models  # noqa: E402,F401
 from app.modules.users import models as user_models  # noqa: E402,F401
 from app.modules.workspaces import models as workspace_models  # noqa: E402,F401

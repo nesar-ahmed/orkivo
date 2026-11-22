@@ -21,7 +21,38 @@ from app.modules.auth.exceptions import (
     AuthorizationError,
     SessionError,
 )
-from app.modules.tasks.exceptions import TaskConflictError, TaskNotFoundError
+from app.modules.comments.exceptions import CommentForbiddenError, CommentNotFoundError
+from app.modules.labels.exceptions import (
+    LabelConflictError,
+    LabelLimitReachedError,
+    LabelNameInUseError,
+    LabelNotFoundError,
+)
+from app.modules.notifications.exceptions import NotificationNotFoundError
+from app.modules.projects.exceptions import (
+    ProjectConflictError,
+    ProjectNameInUseError,
+    ProjectNotFoundError,
+)
+from app.modules.task_dependencies.exceptions import (
+    DependencyCycleError,
+    DependencyExistsError,
+    DependencyLimitReachedError,
+    DependencyNotFoundError,
+    DependencyNotInWorkspaceError,
+    SelfDependencyError,
+)
+from app.modules.tasks.exceptions import (
+    AssigneeNotMemberError,
+    BulkTaskConflictError,
+    BulkTaskForbiddenError,
+    LabelNotInWorkspaceError,
+    ProjectNotInWorkspaceError,
+    TaskConflictError,
+    TaskForbiddenError,
+    TaskLabelLimitError,
+    TaskNotFoundError,
+)
 from app.modules.users.exceptions import (
     EmailAlreadyInUseError,
     RoleChangeNotAllowedError,
@@ -30,6 +61,7 @@ from app.modules.users.exceptions import (
 from app.modules.workspaces.exceptions import (
     AlreadyInvitedError,
     AlreadyMemberError,
+    InviteeNotRegisteredError,
     InviteNotPendingError,
     LastOwnerError,
     PersonalWorkspaceError,
@@ -40,7 +72,7 @@ from app.modules.workspaces.exceptions import (
 )
 from app.shared.errors import ErrorDetail, error_payload
 
-API_DOCS_VERSION = "0.2.0"
+API_DOCS_VERSION = "0.6.0"
 
 _STATUS_ERROR_CODES: dict[int, str] = {
     400: "BAD_REQUEST",
@@ -54,14 +86,19 @@ _STATUS_ERROR_CODES: dict[int, str] = {
 }
 
 # Domain exceptions and the status each one maps to. Handlers read ``code`` and
-# ``message`` off the exception, so subclasses (``InvalidCredentialsError`` ->
-# 401, ``CsrfCheckFailedError`` -> 403) inherit the right behaviour
+# ``message`` off the exception --- and ``details``, when a refusal names several
+# things, as a bulk request's does --- so subclasses (``InvalidCredentialsError``
+# -> 401, ``CsrfCheckFailedError`` -> 403) inherit the right behaviour
 # (architecture doc section 7).
 _DOMAIN_ERROR_STATUS: dict[type[Exception], int] = {
     AuthenticationError: 401,
     SessionError: 401,
     AccountDisabledError: 401,
     AuthorizationError: 403,
+    # The caller can see the comment or task, so the reason is more useful than a 404.
+    CommentForbiddenError: 403,
+    TaskForbiddenError: 403,
+    BulkTaskForbiddenError: 403,
     # Workspace tenancy. ``WorkspaceRoleNotAllowedError`` and
     # ``WorkspaceSuspendedError`` are 403 because the caller *is* in the tenant;
     # a caller who is not never reaches them, since membership failures answer
@@ -70,16 +107,44 @@ _DOMAIN_ERROR_STATUS: dict[type[Exception], int] = {
     WorkspaceSuspendedError: 403,
     WorkspaceNotFoundError: 404,
     TaskNotFoundError: 404,
+    ProjectNotFoundError: 404,
+    LabelNotFoundError: 404,
+    DependencyNotFoundError: 404,
+    CommentNotFoundError: 404,
+    NotificationNotFoundError: 404,
     UserNotFoundError: 404,
     EmailAlreadyInUseError: 409,
     RoleChangeNotAllowedError: 409,
     TaskConflictError: 409,
+    BulkTaskConflictError: 409,
+    ProjectConflictError: 409,
+    ProjectNameInUseError: 409,
+    LabelConflictError: 409,
+    LabelNameInUseError: 409,
+    # A well-formed request the workspace has no room for: the caller can fix it by
+    # deleting or reusing a label, so it is a conflict with the current state.
+    LabelLimitReachedError: 409,
+    DependencyExistsError: 409,
+    # The link contradicts the plan as it stands (a loop), or the task has no room.
+    DependencyCycleError: 409,
+    DependencyLimitReachedError: 409,
     WorkspaceSlugInUseError: 409,
     AlreadyMemberError: 409,
     AlreadyInvitedError: 409,
     InviteNotPendingError: 409,
     LastOwnerError: 409,
     PersonalWorkspaceError: 409,
+    # A well-formed request naming someone, a project or a label that cannot
+    # hold work in this tenant.
+    AssigneeNotMemberError: 422,
+    ProjectNotInWorkspaceError: 422,
+    LabelNotInWorkspaceError: 422,
+    DependencyNotInWorkspaceError: 422,
+    # Well-formed, but the tasks it names have no room for the labels it adds.
+    TaskLabelLimitError: 422,
+    SelfDependencyError: 422,
+    # An invitation must name someone who can actually accept it.
+    InviteeNotRegisteredError: 422,
 }
 
 
@@ -125,7 +190,10 @@ def register_error_handlers(app: FastAPI) -> None:
         async def handler(_request: Request, exc: Exception) -> JSONResponse:
             code = getattr(exc, "code", "INTERNAL_ERROR")
             message = getattr(exc, "message", "An unexpected error occurred.")
-            return JSONResponse(status_code=status_code, content=error_payload(code, message))
+            details: list[ErrorDetail] = getattr(exc, "details", [])
+            return JSONResponse(
+                status_code=status_code, content=error_payload(code, message, details)
+            )
 
         return handler
 

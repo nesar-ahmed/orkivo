@@ -32,6 +32,7 @@ filterwarnings = ["error"]
 markers = [
     "unit: unit tests for domain rules and application services",
     "api: HTTP behavior and response-contract tests",
+    "integration: the migration chain against a real (throwaway) database",
 ]
 
 [tool.mypy]
