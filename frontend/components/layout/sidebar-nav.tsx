@@ -2,8 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, CheckSquare, Inbox, ShieldCheck, Users } from "lucide-react";
+import {
+  Building2,
+  CheckSquare,
+  FolderKanban,
+  History,
+  Inbox,
+  LayoutDashboard,
+  ListTodo,
+  ShieldCheck,
+  Tags,
+  Users,
+  Zap,
+} from "lucide-react";
 import { type ReactNode } from "react";
+import { DEFAULT_POST_AUTH_PATH } from "@/features/auth/auth-policy";
 import { WorkspaceSwitcher } from "@/features/workspaces/components/workspace-switcher";
 import { findWorkspaceForPath, workspacePath } from "@/features/workspaces/workspace-utils";
 import { cn } from "@/lib/utils/cn";
@@ -48,10 +61,34 @@ export function SidebarNav({
   const workspaceItems: NavItem[] = current
     ? [
         {
+          href: workspacePath(current, "overview"),
+          label: "Overview",
+          icon: <LayoutDashboard />,
+          active: under(workspacePath(current, "overview")),
+        },
+        {
           href: workspacePath(current, "tasks"),
           label: "Tasks",
           icon: <CheckSquare />,
           active: under(workspacePath(current, "tasks")),
+        },
+        {
+          href: workspacePath(current, "projects"),
+          label: "Projects",
+          icon: <FolderKanban />,
+          active: under(workspacePath(current, "projects")),
+        },
+        {
+          href: workspacePath(current, "labels"),
+          label: "Labels",
+          icon: <Tags />,
+          active: under(workspacePath(current, "labels")),
+        },
+        {
+          href: workspacePath(current, "activity"),
+          label: "Activity",
+          icon: <History />,
+          active: under(workspacePath(current, "activity")),
         },
         ...(current.kind === "team"
           ? [
@@ -61,12 +98,24 @@ export function SidebarNav({
                 icon: <Users />,
                 active: under(workspacePath(current, "people")),
               },
+              {
+                href: workspacePath(current, "automations"),
+                label: "Automations",
+                icon: <Zap />,
+                active: under(workspacePath(current, "automations")),
+              },
             ]
           : []),
       ]
     : [];
 
   const generalItems: NavItem[] = [
+    {
+      href: "/app/my-tasks",
+      label: "My tasks",
+      icon: <ListTodo />,
+      active: under("/app/my-tasks"),
+    },
     {
       href: "/app/workspaces",
       label: "Workspaces",
@@ -89,7 +138,7 @@ export function SidebarNav({
   return (
     <div className="flex h-full flex-col gap-4 p-3">
       <Link
-        href="/app/personal/tasks"
+        href={DEFAULT_POST_AUTH_PATH}
         onClick={onNavigate}
         className="flex items-center gap-2.5 rounded-md px-1.5 py-1"
       >

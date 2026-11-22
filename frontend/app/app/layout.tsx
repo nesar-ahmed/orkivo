@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { isUnauthenticated, readCurrentUserOnce } from "@/features/auth";
+import { fetchUnreadCount } from "@/features/notifications";
 import { readMyWorkspacesOnce } from "@/features/workspaces";
 import { getServerCookieHeader } from "@/lib/api/server-cookies";
 import type { User } from "@/types/auth";
@@ -45,8 +46,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     workspaces = null;
   }
 
+  // The badge's first value, so it does not flash from empty. Optional like the
+  // switcher: the bell polls on its own once the page is in the browser.
+  let unread = 0;
+  try {
+    unread = (await fetchUnreadCount(cookie)).count;
+  } catch {
+    unread = 0;
+  }
+
   return (
-    <AppShell user={user} workspaces={workspaces}>
+    <AppShell user={user} workspaces={workspaces} unread={unread}>
       {children}
     </AppShell>
   );

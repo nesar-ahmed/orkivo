@@ -1,14 +1,18 @@
 import type { ReactNode } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CommandPalette } from "@/features/command-palette";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import type { User } from "@/types/auth";
 import type { Workspace } from "@/types/workspace";
 import { Breadcrumbs } from "./breadcrumbs";
 import { MobileNav } from "./mobile-nav";
 import { SidebarNav } from "./sidebar-nav";
+import { TimezoneSync } from "./timezone-sync";
 
 /**
  * Application shell: a sidebar with the workspace switcher and navigation, a top
- * bar with breadcrumbs, and the page (architecture doc 8.1).
+ * bar with breadcrumbs, search (the command palette, also on Ctrl+K) and the
+ * notification inbox, and the page (architecture doc 8.1).
  *
  * Below the `lg` breakpoint the sidebar becomes a drawer behind the menu button,
  * so nothing is pushed off-screen on a phone. The account is the one the `/app`
@@ -18,14 +22,18 @@ import { SidebarNav } from "./sidebar-nav";
 export function AppShell({
   user,
   workspaces,
+  unread,
   children,
 }: {
   user: User;
   workspaces: Workspace[] | null;
+  /** Unread notifications when the page was rendered; the bell keeps it fresh. */
+  unread: number;
   children: ReactNode;
 }) {
   return (
     <TooltipProvider>
+      <TimezoneSync />
       <a
         href="#main"
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
@@ -41,6 +49,10 @@ export function AppShell({
           <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur sm:px-6">
             <MobileNav user={user} workspaces={workspaces} />
             <Breadcrumbs workspaces={workspaces ?? []} />
+            <div className="ml-auto flex items-center gap-2">
+              <CommandPalette user={user} workspaces={workspaces} />
+              <NotificationBell initialUnread={unread} />
+            </div>
           </header>
 
           <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8">

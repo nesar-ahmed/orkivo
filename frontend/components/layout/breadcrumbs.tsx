@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { findWorkspaceForPath, workspacePath } from "@/features/workspaces/workspace-utils";
+import {
+  WORKSPACE_HOME_SECTION,
+  findWorkspaceForPath,
+  workspacePath,
+} from "@/features/workspaces/workspace-utils";
 import type { Workspace } from "@/types/workspace";
 
 interface Crumb {
@@ -12,6 +16,7 @@ interface Crumb {
 }
 
 const STATIC_TRAILS: ReadonlyArray<readonly [RegExp, Crumb[]]> = [
+  [/^\/app\/my-tasks(\/|$)/, [{ label: "My tasks" }]],
   [/^\/app\/workspaces(\/|$)/, [{ label: "Workspaces" }]],
   [/^\/app\/profile(\/|$)/, [{ label: "Invitations & profile" }]],
   [/^\/app\/platform\/tenants/, [{ label: "Platform", href: "/app/platform/tenants" }, { label: "Tenants" }]],
@@ -72,9 +77,14 @@ function crumbsFor(pathname: string, workspaces: readonly Workspace[]): Crumb[] 
 
   const root: Crumb = {
     label: workspace.kind === "personal" ? "Private" : workspace.name,
-    href: workspacePath(workspace, "tasks"),
+    href: workspacePath(workspace, WORKSPACE_HOME_SECTION),
   };
+  if (/\/overview(\/|$)/.test(pathname)) return [root, { label: "Overview" }];
   if (/\/people(\/|$)/.test(pathname)) return [root, { label: "People" }];
+  if (/\/automations(\/|$)/.test(pathname)) return [root, { label: "Automations" }];
+  if (/\/projects(\/|$)/.test(pathname)) return [root, { label: "Projects" }];
+  if (/\/labels(\/|$)/.test(pathname)) return [root, { label: "Labels" }];
+  if (/\/activity(\/|$)/.test(pathname)) return [root, { label: "Activity" }];
   if (/\/tasks\/[^/]+/.test(pathname)) {
     return [root, { label: "Tasks", href: workspacePath(workspace, "tasks") }, { label: "Task" }];
   }
