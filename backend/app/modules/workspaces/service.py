@@ -10,18 +10,21 @@ tenant (view mode) still allows --- is decided by ``access.WorkspaceAccessPolicy
 and its rule table, not here. This service asks it for an action and then applies
 the rules that are about the *target* rather than the caller:
 
-====================================  ==========  ========  ======  ============
-Operation                             owner       admin     member  not a member
-====================================  ==========  ========  ======  ============
-Read the tenant and its people         yes        yes       yes     404
-Rename the tenant                     yes        yes        --      404
-Invite, revoke, list invitations      yes        yes        --      404
-Remove a member                       yes        yes (1)    --      404
-Leave                                 yes (2)    yes       yes     404
-Change roles                          yes         --        --      404
-====================================  ==========  ========  ======  ============
+====================================  ========  ========  ==========================  ============
+Operation                             owner     admin     manager, member, viewer     not a member
+====================================  ========  ========  ==========================  ============
+Read the tenant and its people        yes       yes       yes                         404
+Rename the tenant                     yes       yes       --                          404
+Invite, revoke, list invitations      yes (1)   yes (1)   --                          404
+Change someone's role                 yes (1)   yes (1)   --                          404
+Remove a member                       yes (1)   yes (1)   --                          404
+Leave                                 yes (2)   yes       yes                         404
+====================================  ========  ========  ==========================  ============
 
-(1) an admin may remove members and other admins, never an owner.
+(1) only for roles the caller may grant (``access.GRANTABLE_ROLES``): an owner
+    grants every role, an admin grants manager, member and viewer. An admin
+    therefore cannot invite or promote anyone to admin, nor demote or remove an
+    admin or an owner.
 (2) never the last owner.
 
 A non-member is answered with *not found*, never *forbidden*: confirming that a
@@ -35,6 +38,8 @@ from collections.abc import Sequence
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.notifications.membership import forget_member
+from app.modules.tasks.membership import release_member
 from app.modules.users.models import User
 from app.modules.users.service import normalize_email
 from app.modules.workspaces import repository
@@ -45,6 +50,7 @@ from app.modules.workspaces.access import (
     can_be_suspended,
 )
 from app.modules.workspaces.enums import (
+    CandidateStanding,
     InviteStatus,
     WorkspaceAction,
     WorkspaceKind,
@@ -54,6 +60,7 @@ from app.modules.workspaces.enums import (
 from app.modules.workspaces.exceptions import (
     AlreadyInvitedError,
     AlreadyMemberError,
+    InviteeNotRegisteredError,
     InviteNotPendingError,
     LastOwnerError,
     PersonalWorkspaceError,
@@ -87,6 +94,10 @@ RESERVED_SLUGS = frozenset(
         "workspaces",
     }
 )
+
+
+#: How many people the invite picker shows at once; typing narrows the list.
+INVITE_CANDIDATE_LIMIT = 10
 
 
 class WorkspaceService:
@@ -201,6 +212,12 @@ class WorkspaceService:
         invariants about the *target* stay here: only an owner may remove an
         owner, and the last owner may not go. A tenant without an owner is a
         company nobody can administer, visible only to an operator.
+
+        Whatever the person was assigned is released in the same commit, through
+        the tasks module's public ``release_member``, and their watches and
+        notifications in this tenant are removed through the notifications
+        module's ``forget_member`` --- this module decides who leaves, each owner of
+        the content decides what that means for its rows.
         """
         access = self._access.require(workspace_id, actor=actor)
         workspace, acting = access.workspace, access.member
@@ -211,12 +228,22 @@ class WorkspaceService:
 
         leaving_alone = acting.id == target.id
         access.require(WorkspaceAction.LEAVE if leaving_alone else WorkspaceAction.MANAGE)
-        if target.role is WorkspaceRole.OWNER:
-            if not leaving_alone and acting.role is not WorkspaceRole.OWNER:
-                raise WorkspaceRoleNotAllowedError
-            if repository.count_owners(self._session, workspace.id) <= 1:
-                raise LastOwnerError
+        if not leaving_alone and not access.may_grant(target.role):
+            # Only someone who could have made them what they are may remove them.
+            raise WorkspaceRoleNotAllowedError
+        if (
+            target.role is WorkspaceRole.OWNER
+            and repository.count_owners(self._session, workspace.id) <= 1
+        ):
+            raise LastOwnerError
 
+        # The person's work stays with the company, but nothing stays assigned to
+        # someone who can no longer see it --- released in this same transaction.
+        release_member(
+            self._session, workspace_id=workspace.id, user_id=target.user_id, actor=actor
+        )
+        # ...and nothing from this company keeps reaching them: no watches, no inbox.
+        forget_member(self._session, workspace_id=workspace.id, user_id=target.user_id)
         repository.remove_member(self._session, target)
         self._commit()
 
@@ -228,16 +255,24 @@ class WorkspaceService:
         role: WorkspaceRole,
         actor: User,
     ) -> tuple[WorkspaceMember, User]:
-        """Move someone between owner, admin and member. Owners only.
+        """Move someone to another role. Owners and admins, within what they grant.
 
-        Ownership can be granted here (that is how a company gets a second
-        accountable head) but never by invitation, and the last owner cannot be
-        demoted out of existence.
+        Both the role the person holds now and the one they are given must be
+        roles the caller may grant: an owner may move anyone anywhere, an admin
+        only among manager, member and viewer --- so an admin can neither mint an
+        admin nor demote one. Ownership can be granted here (that is how a company
+        gets a second accountable head) but never by invitation, and the last
+        owner cannot be demoted out of existence.
         """
-        workspace = self._require(workspace_id, actor, WorkspaceAction.CHANGE_ROLES)
+        access = self._access.require(
+            workspace_id, actor=actor, action=WorkspaceAction.CHANGE_ROLES
+        )
+        workspace = access.workspace
         target = repository.get_member(self._session, workspace.id, member_user_id)
         if target is None:
             raise WorkspaceNotFoundError(workspace.id)
+        if not (access.may_grant(target.role) and access.may_grant(role)):
+            raise WorkspaceRoleNotAllowedError
 
         if (
             target.role is WorkspaceRole.OWNER
@@ -262,17 +297,33 @@ class WorkspaceService:
     def invite(
         self, workspace_id: uuid.UUID, data: InviteCreate, *, actor: User
     ) -> WorkspaceInvite:
-        """Open the tenant to an address: no delivery, no account required.
+        """Offer a registered account a place in the tenant. No delivery.
 
-        The row is exactly what a mail transport would later send, which is why
-        adding email does not change this model. Re-invoking an address that
-        declined or was revoked reopens that row instead of stacking duplicates,
-        and an invitation can only ever offer ``member`` or ``admin``.
+        The person must already have an enabled account --- named by id (the
+        invite picker) or by exact address --- so every offer can actually be
+        accepted; an address nobody has registered is refused with
+        ``INVITEE_NOT_REGISTERED`` instead of waiting forever. The row still
+        records the address, because that is what the addressee's inbox matches.
+
+        Re-inviting someone who declined or was revoked reopens that row instead
+        of stacking duplicates. An invitation never offers ``owner`` (the contract
+        cannot express it), and offers ``admin`` only when an owner sends it: the
+        role must be one the inviter may grant.
         """
         # The policy refuses private workspaces and suspended companies too.
-        workspace = self._require(workspace_id, actor, WorkspaceAction.INVITE)
+        access = self._access.require(workspace_id, actor=actor, action=WorkspaceAction.INVITE)
+        if not access.may_grant(data.role):
+            raise WorkspaceRoleNotAllowedError
+        workspace = access.workspace
 
-        email = normalize_email(data.email)
+        invitee = repository.get_invitable_account(
+            self._session,
+            user_id=data.user_id,
+            email=normalize_email(data.email) if data.email is not None else None,
+        )
+        if invitee is None:
+            raise InviteeNotRegisteredError
+        email = invitee.email
         if repository.get_member_by_email(self._session, workspace.id, email) is not None:
             raise AlreadyMemberError
 
@@ -298,6 +349,46 @@ class WorkspaceService:
         repository.add_invite(self._session, invite)
         self._commit()
         return invite
+
+    def invite_candidates(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        actor: User,
+        search: str | None = None,
+        limit: int = INVITE_CANDIDATE_LIMIT,
+    ) -> list[tuple[User, CandidateStanding | None]]:
+        """Who the invite picker may offer, each with why they cannot be picked.
+
+        Only for callers who may invite here. The caller's colleagues (people who
+        share any workspace with them) match a part of a name or address; anyone
+        else on the platform only their exact address. That keeps the picker from
+        ever becoming a directory of every account, while still letting an owner
+        reach a person whose address they already know.
+        """
+        workspace = self._require(workspace_id, actor, WorkspaceAction.INVITE)
+        term = search.strip() if search else None
+        exact = normalize_email(term) if term and "@" in term else None
+        accounts = repository.list_invite_candidates(
+            self._session, actor_id=actor.id, search=term, exact_email=exact, limit=limit
+        )
+        members = repository.member_ids_among(
+            self._session, workspace.id, [account.id for account in accounts]
+        )
+        invited = repository.pending_invite_emails_among(
+            self._session, workspace.id, [account.email for account in accounts]
+        )
+        return [
+            (
+                account,
+                CandidateStanding.MEMBER
+                if account.id in members
+                else CandidateStanding.INVITED
+                if account.email in invited
+                else None,
+            )
+            for account in accounts
+        ]
 
     def list_invites(
         self, workspace_id: uuid.UUID, *, actor: User, page: int = 1, page_size: int = 20

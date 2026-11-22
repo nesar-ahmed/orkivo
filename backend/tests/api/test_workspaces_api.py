@@ -11,7 +11,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.synth import BASE, email_for, slug_for
+from tests.synth import BASE, PASSWORD, email_for, slug_for
 
 pytestmark = pytest.mark.api
 
@@ -26,6 +26,23 @@ def create_team(client: TestClient, name: str = "Synthetic Co", slug: str | None
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def register(client: TestClient, email: str) -> dict:
+    """Create an account without signing in: the client's own session is untouched.
+
+    Invitations are only offered to registered accounts, so a test that invites
+    someone who has not signed in yet registers them first with this.
+    """
+    response = client.post(f"{BASE}/auth/register", json={"email": email, "password": PASSWORD})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def log_in(client: TestClient, email: str) -> None:
+    """Start a session for an account that already exists."""
+    response = client.post(f"{BASE}/auth/login", json={"email": email, "password": PASSWORD})
+    assert response.status_code == 200, response.text
 
 
 def personal_team(client: TestClient) -> dict:
@@ -123,8 +140,8 @@ def test_a_missing_tenant_and_a_private_one_are_indistinguishable(
 def test_members_may_read_their_own_tenant(client: TestClient, second_client, sign_in) -> None:
     sign_in(client, email=email_for("boss"))
     team = create_team(client, slug=slug_for("shared"))
-    client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY)
     sign_in(second_client, email=email_for("joiner"))
+    client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY)
     invitation = second_client.get(f"{BASE}/workspaces/invitations").json()["items"][0]
     second_client.post(f"{BASE}/workspaces/invitations/{invitation['id']}/accept")
 
@@ -141,8 +158,8 @@ def test_a_member_cannot_change_roles(
     sign_in(client, email=email_for("boss"))
     team = create_team(client, slug=slug_for("gated"))
     boss = client.get(f"{BASE}/users/me").json()
-    invite = client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY).json()
     sign_in(second_client, email=email_for("joiner"))
+    invite = client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY).json()
     accepted = second_client.post(f"{BASE}/workspaces/invitations/{invite['id']}/accept").json()
     assert accepted["my_role"] == "member"
 
@@ -185,14 +202,14 @@ def test_invitation_round_trip_without_any_mail_transport(
 ) -> None:
     sign_in(client, email=email_for("inviter"))
     team = create_team(client, slug=slug_for("hiring"))
+    sign_in(second_client, email=email_for("joiner"))
 
     invite = client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY)
 
     assert invite.status_code == 201
     assert invite.json()["status"] == "pending"
 
-    # The address registers, and finds the offer waiting --- no token, no link.
-    sign_in(second_client, email=email_for("joiner"))
+    # The invitee finds the offer waiting on their next visit --- no token, no link.
     mine = second_client.get(f"{BASE}/workspaces/invitations").json()["items"]
     assert [row["workspace_name"] for row in mine] == ["Synthetic Co"]
     assert mine[0]["invited_by_name"] == "Inviter"
@@ -210,6 +227,7 @@ def test_accepting_a_strangers_invitation_is_refused(
 ) -> None:
     sign_in(client, email=email_for("inviter"))
     team = create_team(client, slug=slug_for("trap"))
+    register(client, email_for("joiner"))
     invite = client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY).json()
     sign_in(second_client, email=email_for("somebody-else"))
 
@@ -227,8 +245,8 @@ def test_declining_leaves_the_tenant_closed(
 ) -> None:
     sign_in(client, email=email_for("inviter"))
     team = create_team(client, slug=slug_for("polite"))
-    client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY)
     sign_in(second_client, email=email_for("joiner"))
+    client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY)
     invitation = second_client.get(f"{BASE}/workspaces/invitations").json()["items"][0]
 
     declined = second_client.post(f"{BASE}/workspaces/invitations/{invitation['id']}/decline")
@@ -245,8 +263,8 @@ def test_revoking_an_invitation_closes_the_door(
 ) -> None:
     sign_in(client, email=email_for("inviter"))
     team = create_team(client, slug=slug_for("withdrawn"))
-    invite = client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY).json()
     sign_in(second_client, email=email_for("joiner"))
+    invite = client.post(f"{BASE}/workspaces/{team['id']}/invites", json=INVITE_BODY).json()
 
     revoked = client.delete(f"{BASE}/workspaces/{team['id']}/invites/{invite['id']}")
 
@@ -337,6 +355,7 @@ def test_a_suspended_company_admits_no_new_members(
     """
     sign_in(second_client, email=email_for("founder"))
     team = create_team(second_client, name="Frozen Co", slug=slug_for("frozen"))
+    register(second_client, email_for("joiner"))
     created = second_client.post(
         f"{BASE}/workspaces/{team['id']}/invites", json={"email": email_for("joiner")}
     )
@@ -347,7 +366,7 @@ def test_a_suspended_company_admits_no_new_members(
     )
     assert suspended.status_code == 200
 
-    sign_in(second_client, email=email_for("joiner"))
+    log_in(second_client, email_for("joiner"))
     pending = second_client.get(f"{BASE}/workspaces/invitations").json()["items"]
 
     response = second_client.post(f"{BASE}/workspaces/invitations/{pending[0]['id']}/accept")

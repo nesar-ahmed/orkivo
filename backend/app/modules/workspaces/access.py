@@ -1,7 +1,7 @@
 """Tenant access control: the one place that decides who may do what in a workspace.
 
-Every feature that stores something inside a tenant --- tasks today, projects and
-comments next --- asks this module, and only this module, whether the caller may
+Every feature that stores something inside a tenant --- tasks, projects, labels
+and comments --- asks this module, and only this module, whether the caller may
 touch it. The rules are a table rather than ``if`` statements spread over
 services, so changing a decision (for instance what suspension means) is one
 edit that every feature inherits (architecture doc sections 5 and 9).
@@ -25,21 +25,42 @@ Four rules hold for every action:
   an individual is stopped by disabling the *account* instead
   (:func:`can_be_suspended`).
 
-====================  ==============  ============  ===========================
-Action                Roles           Private ws    While the tenant is suspended
-====================  ==============  ============  ===========================
-read                  every member    yes           allowed (view mode)
-edit_content          every member    yes           refused
-leave                 every member    no            refused
-view_invites          owner, admin    no            allowed (view mode)
-manage                owner, admin    yes (rename)  refused
-invite                owner, admin    no            refused
-change_roles          owner           no            refused
-====================  ==============  ============  ===========================
+* **A role grants only what its row says.** Roles rank owner, admin, manager,
+  member, viewer, and each action names the roles it admits --- there is no
+  "at least admin" arithmetic to get wrong when a role is added.
+
+====================  ==========================  ============  =====================
+Action                Roles                       Private ws    While suspended
+====================  ==========================  ============  =====================
+read                  every member                yes           allowed (view mode)
+edit_content          owner, admin, manager,      yes           refused
+                      member
+comment               owner, admin, manager,      yes           refused
+                      member
+manage_tasks          owner, admin, manager       yes           refused
+manage_projects       owner, admin, manager       yes           refused
+manage_labels         owner, admin, manager       yes           refused
+manage_automations    owner, admin, manager       no            refused
+leave                 every member                no            refused
+view_invites          owner, admin                no            allowed (view mode)
+manage                owner, admin                yes (rename)  refused
+invite                owner, admin                no            refused
+change_roles          owner, admin                no            refused
+====================  ==========================  ============  =====================
+
+``edit_content`` covers a member's *own* work only; which task is one's own is a
+rule about the target, kept by the tasks module (``tasks.permissions``), exactly
+as "only its author edits a comment" is kept by the comments module.
+
+Who may be *given* a role is the second table, :data:`GRANTABLE_ROLES`: an owner
+grants every role and an admin grants manager, member and viewer. The same table
+says whose membership a caller may change or end, so nobody can promote a peer,
+demote a superior or remove either --- only an owner makes or touches an owner or
+an admin.
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
@@ -76,7 +97,14 @@ class AccessRule:
 
 
 _EVERY_MEMBER = frozenset(WorkspaceRole)
-_MANAGERS = frozenset({WorkspaceRole.OWNER, WorkspaceRole.ADMIN})
+#: Everyone who works here, as opposed to reading along.
+_CONTRIBUTORS = frozenset(
+    {WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.MANAGER, WorkspaceRole.MEMBER}
+)
+#: Everyone who runs the work: all of it, whoever created or holds it.
+_WORK_MANAGERS = frozenset({WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.MANAGER})
+#: Everyone who runs the tenant itself: its name and its people.
+_ADMINS = frozenset({WorkspaceRole.OWNER, WorkspaceRole.ADMIN})
 
 #: The policy. Read-only to the rest of the program: a rule is changed here, in
 #: review, and never patched at runtime by a feature that wants an exception.
@@ -90,20 +118,48 @@ _MANAGERS = frozenset({WorkspaceRole.OWNER, WorkspaceRole.ADMIN})
 ACCESS_RULES: Mapping[WorkspaceAction, AccessRule] = MappingProxyType(
     {
         WorkspaceAction.READ: AccessRule(roles=_EVERY_MEMBER, while_suspended=True),
-        WorkspaceAction.EDIT_CONTENT: AccessRule(roles=_EVERY_MEMBER, while_suspended=False),
+        WorkspaceAction.EDIT_CONTENT: AccessRule(roles=_CONTRIBUTORS, while_suspended=False),
+        WorkspaceAction.COMMENT: AccessRule(roles=_CONTRIBUTORS, while_suspended=False),
+        WorkspaceAction.MANAGE_TASKS: AccessRule(roles=_WORK_MANAGERS, while_suspended=False),
+        WorkspaceAction.MANAGE_PROJECTS: AccessRule(roles=_WORK_MANAGERS, while_suspended=False),
+        WorkspaceAction.MANAGE_LABELS: AccessRule(roles=_WORK_MANAGERS, while_suspended=False),
+        # A private workspace has one person in it, and nobody is told about their
+        # own action: every rule there would notify no one.
+        WorkspaceAction.MANAGE_AUTOMATIONS: AccessRule(
+            roles=_WORK_MANAGERS, while_suspended=False, in_personal=False
+        ),
         WorkspaceAction.LEAVE: AccessRule(
             roles=_EVERY_MEMBER, while_suspended=False, in_personal=False
         ),
         WorkspaceAction.VIEW_INVITES: AccessRule(
-            roles=_MANAGERS, while_suspended=True, in_personal=False
+            roles=_ADMINS, while_suspended=True, in_personal=False
         ),
-        WorkspaceAction.MANAGE: AccessRule(roles=_MANAGERS, while_suspended=False),
-        WorkspaceAction.INVITE: AccessRule(
-            roles=_MANAGERS, while_suspended=False, in_personal=False
-        ),
+        WorkspaceAction.MANAGE: AccessRule(roles=_ADMINS, while_suspended=False),
+        WorkspaceAction.INVITE: AccessRule(roles=_ADMINS, while_suspended=False, in_personal=False),
         WorkspaceAction.CHANGE_ROLES: AccessRule(
-            roles=frozenset({WorkspaceRole.OWNER}), while_suspended=False, in_personal=False
+            roles=_ADMINS, while_suspended=False, in_personal=False
         ),
+    }
+)
+
+#: Which roles each role may hand out --- by invitation or by changing someone's
+#: role --- and therefore whose role it may change and whose membership it may
+#: end. Read-only, like :data:`ACCESS_RULES`.
+#:
+#: Only an owner grants ``owner`` or ``admin``: an admin cannot create a peer, so
+#: a compromised admin account cannot mint more of itself, and it cannot demote
+#: or remove another admin or an owner either. Roles without ``invite`` or
+#: ``change_roles`` grant nothing. Invitations never offer ``owner`` whatever
+#: this says --- their contract cannot express it (``schemas.InvitableRole``).
+GRANTABLE_ROLES: Mapping[WorkspaceRole, frozenset[WorkspaceRole]] = MappingProxyType(
+    {
+        WorkspaceRole.OWNER: frozenset(WorkspaceRole),
+        WorkspaceRole.ADMIN: frozenset(
+            {WorkspaceRole.MANAGER, WorkspaceRole.MEMBER, WorkspaceRole.VIEWER}
+        ),
+        WorkspaceRole.MANAGER: frozenset(),
+        WorkspaceRole.MEMBER: frozenset(),
+        WorkspaceRole.VIEWER: frozenset(),
     }
 )
 
@@ -139,6 +195,27 @@ def allowed_actions(
         for action in WorkspaceAction
         if is_allowed(action, role=role, status=status, kind=kind)
     ]
+
+
+def grantable_roles(
+    *,
+    role: WorkspaceRole,
+    status: WorkspaceStatus,
+    kind: WorkspaceKind = WorkspaceKind.TEAM,
+) -> list[WorkspaceRole]:
+    """The roles a member with ``role`` may hand out in this tenant right now.
+
+    Empty wherever the caller may neither invite nor change roles --- a private
+    workspace, a suspended company, or a role that grants nothing --- so the API
+    response never offers a choice the next request would refuse. Ordered as the
+    enum declares them (rank order).
+    """
+    if not (
+        is_allowed(WorkspaceAction.INVITE, role=role, status=status, kind=kind)
+        or is_allowed(WorkspaceAction.CHANGE_ROLES, role=role, status=status, kind=kind)
+    ):
+        return []
+    return [granted for granted in WorkspaceRole if granted in GRANTABLE_ROLES[role]]
 
 
 def admits_new_members(workspace: Workspace) -> bool:
@@ -198,9 +275,24 @@ class WorkspaceAccess:
         """Enforce a second action on an already-resolved membership."""
         enforce(self, action)
 
+    def may_grant(self, role: WorkspaceRole) -> bool:
+        """Whether this caller's role may hand out ``role`` (:data:`GRANTABLE_ROLES`).
+
+        The role half only: the caller must also hold ``invite``, ``change_roles``
+        or ``manage`` for the operation at hand, which is what refuses a private
+        workspace or a suspended company.
+        """
+        return role in GRANTABLE_ROLES[self.member.role]
+
     @property
     def actions(self) -> list[WorkspaceAction]:
         return allowed_actions(
+            role=self.member.role, status=self.workspace.status, kind=self.workspace.kind
+        )
+
+    @property
+    def grantable_roles(self) -> list[WorkspaceRole]:
+        return grantable_roles(
             role=self.member.role, status=self.workspace.status, kind=self.workspace.kind
         )
 
@@ -277,6 +369,35 @@ class WorkspaceAccessPolicy:
         if workspace is None:
             raise WorkspaceNotFoundError(uuid.uuid4())
         return self._authorize(workspace, workspace.id, actor=actor, action=action)
+
+    def readable(self, *, actor: User) -> Sequence[WorkspaceAccess]:
+        """Every tenant ``actor`` may read right now, with the access it grants.
+
+        For content read *across* tenants at once --- a person's own tasks in every
+        workspace they are in. The same rule as :meth:`require` with ``read``,
+        applied to each membership, so there is still exactly one place that
+        decides who may read what: a tenant missing from this answer is one the
+        caller could not open on its own either.
+        """
+        accesses = [
+            WorkspaceAccess(workspace=workspace, member=member)
+            for workspace, member in repository.list_memberships(self._session, actor.id)
+        ]
+        return [access for access in accesses if access.allows(WorkspaceAction.READ)]
+
+    def members_among(
+        self, workspace_id: uuid.UUID, user_ids: Collection[uuid.UUID]
+    ) -> Mapping[uuid.UUID, User]:
+        """Which of these accounts belong to the tenant right now, by id.
+
+        For content that *points at* people --- a task's assignee today, the
+        people a comment mentions next. It authorizes nobody: the caller must
+        already hold access to ``workspace_id`` through :meth:`require` or
+        :meth:`require_for_content`. An id missing from the answer is either not a
+        member or not an account at all; callers must not tell the two apart.
+        """
+        accounts = repository.list_member_accounts(self._session, workspace_id, user_ids)
+        return MappingProxyType({account.id: account for account in accounts})
 
     def _authorize(
         self,

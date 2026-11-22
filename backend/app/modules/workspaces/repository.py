@@ -12,9 +12,9 @@ Two habits this module keeps for tenant safety:
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.users.models import User
@@ -54,6 +54,24 @@ def get_member(
             WorkspaceMember.user_id == user_id,
         )
     ).first()
+
+
+def list_memberships(
+    session: Session, user_id: uuid.UUID
+) -> Sequence[tuple[Workspace, WorkspaceMember]]:
+    """Every tenant the account belongs to, with its membership row, unpaginated.
+
+    For reads that span the caller's tenants at once (their tasks across every
+    workspace); an account belongs to a handful, so one query returns them all.
+    Ordered like ``list_for_user``: the personal space first, then newest.
+    """
+    rows = session.execute(
+        select(Workspace, WorkspaceMember)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(WorkspaceMember.user_id == user_id)
+        .order_by(Workspace.kind.asc(), Workspace.created_at.desc(), Workspace.id.desc())
+    ).all()
+    return [(workspace, member) for workspace, member in rows]
 
 
 def list_for_user(
@@ -102,6 +120,23 @@ def list_members(
     return [(member, account) for member, account in rows], total
 
 
+def list_roster(
+    session: Session, workspace_id: uuid.UUID
+) -> Sequence[tuple[User, WorkspaceRole]]:
+    """Everyone in the tenant with their role, alphabetically, unpaginated.
+
+    For a report that covers every person at once --- a workload per member ---
+    where a page would silently leave people out. One query.
+    """
+    rows = session.execute(
+        select(User, WorkspaceMember.role)
+        .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+        .where(WorkspaceMember.workspace_id == workspace_id)
+        .order_by(func.lower(User.display_name), User.id)
+    ).all()
+    return [(account, role) for account, role in rows]
+
+
 def get_member_by_email(
     session: Session, workspace_id: uuid.UUID, email: str
 ) -> WorkspaceMember | None:
@@ -132,6 +167,116 @@ def get_member_with_user(
         return None
     member, account = row
     return member, account
+
+
+def list_member_accounts(
+    session: Session, workspace_id: uuid.UUID, user_ids: Collection[uuid.UUID]
+) -> Sequence[User]:
+    """The accounts among ``user_ids`` that hold a membership of this tenant.
+
+    One query for any number of ids, so checking an assignee and, later, every
+    person mentioned in a comment costs the same round trip.
+    """
+    if not user_ids:
+        return []
+    return session.scalars(
+        select(User)
+        .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+        .where(WorkspaceMember.workspace_id == workspace_id, User.id.in_(list(user_ids)))
+    ).all()
+
+
+def get_invitable_account(
+    session: Session, *, user_id: uuid.UUID | None = None, email: str | None = None
+) -> User | None:
+    """An enabled account, by id or by its (normalized) address.
+
+    Read here rather than through the users module for the reason given on
+    ``get_member_by_email``: the question is "who can this tenant invite", which
+    is workspace policy about accounts, not the account itself.
+    """
+    stmt = select(User).where(User.disabled_at.is_(None))
+    if user_id is not None:
+        stmt = stmt.where(User.id == user_id)
+    elif email is not None:
+        stmt = stmt.where(User.email == email)
+    else:
+        return None
+    return session.scalars(stmt).first()
+
+
+def list_invite_candidates(
+    session: Session,
+    *,
+    actor_id: uuid.UUID,
+    search: str | None,
+    exact_email: str | None,
+    limit: int,
+) -> Sequence[User]:
+    """Accounts the actor may pick when inviting, alphabetically.
+
+    Two sources, and nothing else, so the picker can never list the platform's
+    user base:
+
+    * people who already share a workspace with the actor --- matched by a part
+      of their name or address, or all of them when there is no search;
+    * anyone else only by their *exact* address, which the inviter already knows.
+
+    The actor and disabled accounts are never candidates.
+    """
+    my_workspaces = select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == actor_id)
+    colleagues = select(WorkspaceMember.user_id).where(
+        WorkspaceMember.workspace_id.in_(my_workspaces)
+    )
+    known: ColumnElement[bool] = User.id.in_(colleagues)
+    if search:
+        known = and_(
+            known,
+            or_(
+                # icontains escapes LIKE wildcards (% and _) in user input.
+                User.display_name.icontains(search, autoescape=True),
+                User.email.icontains(search, autoescape=True),
+            ),
+        )
+    reachable = or_(known, User.email == exact_email) if exact_email else known
+    stmt = (
+        select(User)
+        .where(User.id != actor_id, User.disabled_at.is_(None), reachable)
+        .order_by(func.lower(User.display_name), User.id)
+        .limit(limit)
+    )
+    return session.scalars(stmt).all()
+
+
+def member_ids_among(
+    session: Session, workspace_id: uuid.UUID, user_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    if not user_ids:
+        return set()
+    return set(
+        session.scalars(
+            select(WorkspaceMember.user_id).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id.in_(list(user_ids)),
+            )
+        ).all()
+    )
+
+
+def pending_invite_emails_among(
+    session: Session, workspace_id: uuid.UUID, emails: Collection[str]
+) -> set[str]:
+    if not emails:
+        return set()
+    return set(
+        session.scalars(
+            select(WorkspaceInvite.email).where(
+                WorkspaceInvite.workspace_id == workspace_id,
+                WorkspaceInvite.status == InviteStatus.PENDING,
+                WorkspaceInvite.email.in_(list(emails)),
+            )
+        ).all()
+    )
 
 
 def count_members(session: Session, workspace_id: uuid.UUID) -> int:

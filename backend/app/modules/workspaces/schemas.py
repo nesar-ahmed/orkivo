@@ -10,9 +10,10 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.modules.workspaces.enums import (
+    CandidateStanding,
     InviteStatus,
     WorkspaceAction,
     WorkspaceKind,
@@ -27,8 +28,12 @@ SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$"
 
 #: What an invitation may grant. Ownership is never handed out by invitation: it
 #: is transferred by an existing owner, so a compromised address cannot make
-#: itself the head of a company.
-InvitableRole = Literal[WorkspaceRole.MEMBER, WorkspaceRole.ADMIN]
+#: itself the head of a company. Which of these a given inviter may offer is the
+#: access policy's answer (``access.GRANTABLE_ROLES``): ``admin`` is an owner's
+#: to offer.
+InvitableRole = Literal[
+    WorkspaceRole.ADMIN, WorkspaceRole.MANAGER, WorkspaceRole.MEMBER, WorkspaceRole.VIEWER
+]
 
 
 class WorkspaceCreate(BaseModel):
@@ -54,13 +59,23 @@ class WorkspaceUpdate(BaseModel):
 
 
 class MemberRoleUpdate(BaseModel):
-    """Change a member's role inside one tenant."""
+    """Change a member's role inside one tenant.
+
+    Any role is well-formed here; whether the caller may give it --- and may
+    change this person's role at all --- is the access policy's decision, answered
+    with ``403 WORKSPACE_FORBIDDEN`` rather than a validation error.
+    """
 
     role: WorkspaceRole
 
 
 class InviteCreate(BaseModel):
-    """Open a tenant to an address. Delivery is a later concern, not a model one.
+    """Offer a registered account a place in a tenant.
+
+    The person is named by ``user_id`` --- what the invite picker sends --- or by
+    their exact ``email``, and exactly one of the two. Either way the account
+    must already exist and be enabled: an invitation is an offer to a person on
+    the platform, not to an address that may never sign up.
 
     ``role`` is a ``Literal`` rather than the full enum: the contract itself
     cannot express an invited owner, so escalation is not a rule the service has
@@ -69,8 +84,36 @@ class InviteCreate(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    email: EmailStr
+    user_id: UUID | None = None
+    email: EmailStr | None = None
     role: InvitableRole = WorkspaceRole.MEMBER
+
+    @model_validator(mode="after")
+    def _names_exactly_one_person(self) -> "InviteCreate":
+        if (self.user_id is None) == (self.email is None):
+            raise ValueError("Name the person by user_id or by email, not both.")
+        return self
+
+
+class InviteCandidateRead(BaseModel):
+    """Someone the inviter may offer a place to, as the invite picker lists them.
+
+    Never the caller. ``email`` is shown because it is either an address the
+    inviter typed in full, or a colleague's address the inviter can already see
+    on a shared workspace's people page. ``standing`` says why a candidate
+    cannot be picked again: already a member, or already holding an open offer.
+    """
+
+    id: UUID
+    display_name: str
+    email: str
+    standing: CandidateStanding | None
+
+
+class InviteCandidateListResponse(BaseModel):
+    """Not paginated: the picker shows the best few matches and narrows as you type."""
+
+    items: list[InviteCandidateRead]
 
 
 class WorkspaceRead(BaseModel):
@@ -93,10 +136,16 @@ class WorkspaceWithRoleRead(WorkspaceRead):
     ``capabilities`` is what the access policy allows this caller right now ---
     for example, a suspended company drops ``edit_content`` for everyone. It is a
     rendering hint computed by the backend; every request is still re-checked.
+
+    ``grantable_roles`` is which roles the caller may hand out here right now, by
+    invitation or by changing someone's role --- and so whose role they may change
+    and whom they may remove. Empty whenever they may do neither. A rendering hint
+    like ``capabilities``, in rank order.
     """
 
     my_role: WorkspaceRole
     capabilities: list[WorkspaceAction]
+    grantable_roles: list[WorkspaceRole]
 
 
 class MemberRead(BaseModel):

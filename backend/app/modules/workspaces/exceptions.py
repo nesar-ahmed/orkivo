@@ -79,3 +79,17 @@ class PersonalWorkspaceError(Exception):
 
     code = "PERSONAL_WORKSPACE_READONLY"
     message = "A personal workspace does not support this action."
+
+
+class InviteeNotRegisteredError(Exception):
+    """The person named in an invitation has no usable account on the platform.
+
+    One answer for "no such address or id" and "that account is disabled":
+    neither can accept an offer, and the difference is not the inviter's to learn.
+    """
+
+    code = "INVITEE_NOT_REGISTERED"
+    message = (
+        "This person does not have an Orkivo account yet. "
+        "Ask them to sign up, then invite them."
+    )

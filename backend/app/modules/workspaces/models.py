@@ -148,12 +148,14 @@ class WorkspaceMember(Base):
 
 
 class WorkspaceInvite(Base):
-    """An address a workspace has opened, waiting for its owner to claim it.
+    """An offer to a registered account, waiting for it to be claimed.
 
     There is no token here, because nothing is delivered: the invitation appears
     in the profile of whoever signs in with that address. That is the whole
     mechanism today, and it is also the row a mail transport would send later
-    --- adding delivery does not change this model.
+    --- adding delivery does not change this model. New offers are only made to
+    existing, enabled accounts (``WorkspaceService.invite``); the address is
+    still what is stored, because it is what the addressee's inbox matches.
 
     It assumes an address is proof of identity, which is what an invite to a
     known colleague means; it is why an invitation grants ``member`` and never

@@ -18,7 +18,12 @@ from fastapi import APIRouter, Path, Query, Response, status
 
 from app.modules.auth.dependencies import CurrentUser, OperatorUser
 from app.modules.users.models import User
-from app.modules.workspaces.access import WorkspaceAccess, admits_new_members, allowed_actions
+from app.modules.workspaces.access import (
+    WorkspaceAccess,
+    admits_new_members,
+    allowed_actions,
+    grantable_roles,
+)
 from app.modules.workspaces.dependencies import WorkspaceServiceDep
 from app.modules.workspaces.enums import WorkspaceKind, WorkspaceRole
 from app.modules.workspaces.models import Workspace, WorkspaceMember
@@ -26,6 +31,8 @@ from app.modules.workspaces.schemas import (
     SLUG_PATTERN,
     InvitationListResponse,
     InvitationRead,
+    InviteCandidateListResponse,
+    InviteCandidateRead,
     InviteCreate,
     InviteListResponse,
     InviteRead,
@@ -78,6 +85,7 @@ def _workspace_with_role(workspace: Workspace, role: WorkspaceRole) -> Workspace
         **base.model_dump(),
         my_role=role,
         capabilities=allowed_actions(role=role, status=workspace.status, kind=workspace.kind),
+        grantable_roles=grantable_roles(role=role, status=workspace.status, kind=workspace.kind),
     )
 
 
@@ -236,7 +244,7 @@ def change_member_role(
     user: CurrentUser,
     service: WorkspaceServiceDep,
 ) -> MemberRead:
-    """Owner, admin or member. Owners only, and never past the last owner."""
+    """Move someone to another role the caller may grant; never past the last owner."""
     member, account = service.change_member_role(
         workspace_id, member_user_id, role=payload.role, actor=user
     )
@@ -281,6 +289,29 @@ def list_invites(
     )
 
 
+@router.get("/{workspace_id}/invite-candidates", response_model=InviteCandidateListResponse)
+def list_invite_candidates(
+    workspace_id: WorkspaceId,
+    user: CurrentUser,
+    service: WorkspaceServiceDep,
+    search: Annotated[str | None, Query(min_length=1, max_length=254)] = None,
+) -> InviteCandidateListResponse:
+    """People the caller may invite here: colleagues by name or address, anyone by
+    exact address. Never the caller. Owner or admin, and never a personal space."""
+    rows = service.invite_candidates(workspace_id, actor=user, search=search)
+    return InviteCandidateListResponse(
+        items=[
+            InviteCandidateRead(
+                id=account.id,
+                display_name=account.display_name,
+                email=account.email,
+                standing=standing,
+            )
+            for account, standing in rows
+        ]
+    )
+
+
 @router.post(
     "/{workspace_id}/invites", response_model=InviteRead, status_code=status.HTTP_201_CREATED
 )
@@ -290,7 +321,9 @@ def create_invite(
     user: CurrentUser,
     service: WorkspaceServiceDep,
 ) -> InviteRead:
-    """Open the tenant to an address. Owner or admin, and never a personal space."""
+    """Offer a registered account a place, at a role the inviter may grant.
+
+    Owner or admin, and never a personal space."""
     return InviteRead.model_validate(service.invite(workspace_id, payload, actor=user))
 
 
