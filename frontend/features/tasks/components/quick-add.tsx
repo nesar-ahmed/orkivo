@@ -8,21 +8,29 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { createTask } from "@/features/tasks/api/task-mutations";
 import { NewTaskDialog } from "@/features/tasks/components/new-task-dialog";
+import type { TaskChoices, TaskDefaults } from "@/features/tasks/task-utils";
 import { feedbackFromError } from "@/lib/api/form-feedback";
 
 /**
  * Type a title, press Enter: the fastest way to capture a task. It sits at the
  * top of the list --- on a phone too --- and "More options" opens the full form
  * with what was already typed.
+ *
+ * While the list is filtered to one assignee, project or label, new tasks start
+ * with it (`defaults`), so a task never disappears from the view it was added in.
  */
 export function QuickAdd({
   workspaceId,
   shared,
   basePath,
+  choices,
+  defaults = {},
 }: {
   workspaceId: string;
   shared: boolean;
   basePath: string;
+  choices?: TaskChoices;
+  defaults?: TaskDefaults;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -35,7 +43,12 @@ export function QuickAdd({
     if (!value) return;
     startTransition(async () => {
       try {
-        const task = await createTask(workspaceId, { title: value });
+        const task = await createTask(workspaceId, {
+          title: value,
+          ...(defaults.assigneeId ? { assignee_id: defaults.assigneeId } : {}),
+          ...(defaults.projectId ? { project_id: defaults.projectId } : {}),
+          ...(defaults.labelIds?.length ? { label_ids: [...defaults.labelIds] } : {}),
+        });
         setTitle("");
         setError(null);
         toast("Task created", {
@@ -80,6 +93,8 @@ export function QuickAdd({
           shared={shared}
           basePath={basePath}
           initialTitle={title}
+          choices={choices}
+          defaults={defaults}
           onCreated={() => setTitle("")}
           trigger={
             <Button variant="ghost" size="xs">

@@ -1,4 +1,4 @@
-import { TaskBoard, loadTaskView, parseTaskQuery } from "@/features/tasks";
+import { TaskBoard, loadTaskChoices, loadTaskView, parseTaskQuery } from "@/features/tasks";
 import { readPersonalWorkspace, workspacePath } from "@/features/workspaces";
 import { getServerCookieHeader } from "@/lib/api/server-cookies";
 
@@ -19,7 +19,10 @@ export default async function PersonalTasksPage({ searchParams }: PageProps) {
   const workspace = await readPersonalWorkspace(cookie);
   if (workspace === null) throw new Error("Your private workspace could not be found.");
   const query = parseTaskQuery(await searchParams);
-  const data = await loadTaskView(workspace.id, query, workspacePath(workspace, "tasks"), cookie);
+  const [data, choices] = await Promise.all([
+    loadTaskView(workspace.id, query, workspacePath(workspace, "tasks"), cookie),
+    loadTaskChoices(workspace.id, cookie),
+  ]);
 
-  return <TaskBoard workspace={workspace} query={query} data={data} />;
+  return <TaskBoard workspace={workspace} query={query} data={data} choices={choices} />;
 }

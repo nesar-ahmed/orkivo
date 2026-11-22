@@ -6,7 +6,13 @@
  */
 
 import { ApiError, apiClient } from "@/lib/api/client";
-import type { Task, TaskCreateInput, TaskUpdateInput } from "@/types/task";
+import type {
+  BulkTaskChanges,
+  BulkTaskRef,
+  Task,
+  TaskCreateInput,
+  TaskUpdateInput,
+} from "@/types/task";
 
 export function createTask(workspaceId: string, input: TaskCreateInput): Promise<Task> {
   return apiClient.post<Task>(`/workspaces/${workspaceId}/tasks`, input);
@@ -24,6 +30,28 @@ export function updateTask(taskId: string, input: TaskUpdateInput): Promise<Task
 export function deleteTask(taskId: string, version?: number): Promise<void> {
   const suffix = version !== undefined ? `?version=${version}` : "";
   return apiClient.delete(`/tasks/${taskId}${suffix}`);
+}
+
+/**
+ * Apply one change to up to 100 tasks of a workspace, all or nothing. Each task is
+ * saved exactly like a single edit; a refusal names every task that caused it in
+ * the error's `details` (`tasks.<index>.…`).
+ */
+export async function bulkUpdateTasks(
+  workspaceId: string,
+  tasks: readonly BulkTaskRef[],
+  changes: BulkTaskChanges,
+): Promise<Task[]> {
+  const response = await apiClient.post<{ items: Task[] }>(
+    `/workspaces/${workspaceId}/tasks/bulk-update`,
+    { tasks, changes },
+  );
+  return response.items;
+}
+
+/** Delete up to 100 tasks of a workspace, all or nothing. */
+export function bulkDeleteTasks(workspaceId: string, tasks: readonly BulkTaskRef[]): Promise<void> {
+  return apiClient.post<void>(`/workspaces/${workspaceId}/tasks/bulk-delete`, { tasks });
 }
 
 /** Whether an API error means "someone else changed this task first". */

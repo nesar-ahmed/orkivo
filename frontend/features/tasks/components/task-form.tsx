@@ -7,12 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createTask } from "@/features/tasks/api/task-mutations";
+import { LabelPicker } from "@/features/tasks/components/task-pickers";
 import {
   MAX_DUE_DATE,
   MIN_DUE_DATE,
+  NO_TASK_CHOICES,
   PRIORITY_LABELS,
   STATUS_LABELS,
   STATUS_ORDER,
+  assigneeName,
+  type TaskChoices,
+  type TaskDefaults,
 } from "@/features/tasks/task-utils";
 import { feedbackFromError } from "@/lib/api/form-feedback";
 import type { Task, TaskPriority, TaskStatus } from "@/types/task";
@@ -24,23 +29,38 @@ const PRIORITIES: TaskPriority[] = ["low", "medium", "high"];
  * the backend contract and lands next to the field it is about.
  *
  * The task is created in `workspaceId`: in a company every member sees it at
- * once; in the private workspace nobody but its owner ever does.
+ * once; in the private workspace nobody but its owner ever does. It can start
+ * assigned to any member, filed under any project and tagged with any labels that
+ * `choices` offers; the backend re-checks each against the workspace.
  */
 export function TaskForm({
   workspaceId,
   defaultStatus = "todo",
   initialTitle = "",
+  choices = NO_TASK_CHOICES,
+  defaults = {},
   onCreated,
   onCancel,
 }: {
   workspaceId: string;
   defaultStatus?: TaskStatus;
   initialTitle?: string;
+  choices?: TaskChoices;
+  /**
+   * Pre-selected assignee, project and labels (those the list is filtered to), or
+   * due date (the calendar day it was added from).
+   */
+  defaults?: TaskDefaults;
   onCreated?: (task: Task) => void;
   onCancel?: () => void;
 }) {
+  const { assignees, projects, labels } = choices;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  // Controlled rather than read from the form: a menu of checkboxes has no value.
+  const [labelIds, setLabelIds] = useState<string[]>(() =>
+    (defaults.labelIds ?? []).filter((id) => labels.some((label) => label.id === id)),
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
 
@@ -60,6 +80,14 @@ export function TaskForm({
           status: String(data.get("status") ?? defaultStatus) as TaskStatus,
           priority: String(data.get("priority") ?? "medium") as TaskPriority,
           due_date: String(data.get("due_date") ?? "") || null,
+          // Absent when there was nothing to offer: the task starts without one.
+          ...(data.has("assignee_id")
+            ? { assignee_id: String(data.get("assignee_id")) || null }
+            : {}),
+          ...(data.has("project_id")
+            ? { project_id: String(data.get("project_id")) || null }
+            : {}),
+          ...(labelIds.length > 0 ? { label_ids: labelIds } : {}),
         });
         setFieldErrors({});
         setGeneralError(null);
@@ -101,7 +129,7 @@ export function TaskForm({
         />
       </Field>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field id="task-status" label="Status">
           <Select id="task-status" name="status" defaultValue={defaultStatus} disabled={isPending}>
             {STATUS_ORDER.map((status) => (
@@ -127,10 +155,68 @@ export function TaskForm({
             type="date"
             min={MIN_DUE_DATE}
             max={MAX_DUE_DATE}
+            defaultValue={defaults.dueDate}
             aria-invalid={Boolean(fieldErrors.due_date)}
             disabled={isPending}
           />
         </Field>
+        {assignees.members.length > 0 ? (
+          <Field id="task-assignee" label="Assignee" error={fieldErrors.assignee_id}>
+            <Select
+              id="task-assignee"
+              name="assignee_id"
+              defaultValue={
+                assignees.members.some((member) => member.id === defaults.assigneeId)
+                  ? defaults.assigneeId
+                  : ""
+              }
+              aria-invalid={Boolean(fieldErrors.assignee_id)}
+              disabled={isPending}
+            >
+              <option value="">Unassigned</option>
+              {assignees.members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {assigneeName(member, assignees.viewerId)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        {projects.length > 0 ? (
+          <Field id="task-project" label="Project" error={fieldErrors.project_id}>
+            <Select
+              id="task-project"
+              name="project_id"
+              defaultValue={
+                projects.some((project) => project.id === defaults.projectId)
+                  ? defaults.projectId
+                  : ""
+              }
+              aria-invalid={Boolean(fieldErrors.project_id)}
+              disabled={isPending}
+            >
+              <option value="">No project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        {labels.length > 0 ? (
+          <div className="sm:col-span-2">
+            <Field id="task-labels" label="Labels" error={fieldErrors.label_ids}>
+              <LabelPicker
+                id="task-labels"
+                value={labelIds}
+                labels={labels}
+                onChange={setLabelIds}
+                disabled={isPending}
+              />
+            </Field>
+          </div>
+        ) : null}
       </div>
 
       {generalError ? (

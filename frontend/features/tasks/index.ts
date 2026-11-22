@@ -1,7 +1,11 @@
 export { TaskBoard } from "./components/task-board";
 export { TaskDetail } from "./components/task-detail";
 export { TaskForm } from "./components/task-form";
+export { TaskPage } from "./components/task-page";
 export { fetchTask, fetchTasks } from "./api/task-queries";
 export { loadTaskView } from "./api/task-view-data";
+export { loadTaskChoices } from "./api/task-choices";
 export { createTask, deleteTask, isTaskConflict, updateTask } from "./api/task-mutations";
 export { parseTaskQuery, taskQueryHref } from "./task-query";
+export { taskCan } from "./task-utils";
+export type { TaskChoices } from "./task-utils";

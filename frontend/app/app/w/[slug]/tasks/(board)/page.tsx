@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { TaskBoard, loadTaskView, parseTaskQuery } from "@/features/tasks";
+import { TaskBoard, loadTaskChoices, loadTaskView, parseTaskQuery } from "@/features/tasks";
 import { workspacePath } from "@/features/workspaces";
 import { loadCompany } from "../../load-company";
 
@@ -23,7 +23,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function CompanyTasksPage({ params, searchParams }: PageProps) {
   const { workspace, cookie } = await loadCompany(params);
   const query = parseTaskQuery(await searchParams);
-  const data = await loadTaskView(workspace.id, query, workspacePath(workspace, "tasks"), cookie);
+  const [data, choices] = await Promise.all([
+    loadTaskView(workspace.id, query, workspacePath(workspace, "tasks"), cookie),
+    loadTaskChoices(workspace.id, cookie),
+  ]);
 
-  return <TaskBoard workspace={workspace} query={query} data={data} />;
+  return <TaskBoard workspace={workspace} query={query} data={data} choices={choices} />;
 }

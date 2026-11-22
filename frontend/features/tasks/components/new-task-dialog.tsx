@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { TaskForm } from "@/features/tasks/components/task-form";
+import type { TaskChoices, TaskDefaults } from "@/features/tasks/task-utils";
 import type { Task, TaskStatus } from "@/types/task";
 
 /**
@@ -18,6 +19,8 @@ export function NewTaskDialog({
   trigger,
   defaultStatus,
   initialTitle,
+  choices,
+  defaults,
   onCreated,
 }: {
   workspaceId: string;
@@ -26,6 +29,8 @@ export function NewTaskDialog({
   trigger: ReactNode;
   defaultStatus?: TaskStatus;
   initialTitle?: string;
+  choices?: TaskChoices;
+  defaults?: TaskDefaults;
   onCreated?: (task: Task) => void;
 }) {
   const router = useRouter();
@@ -54,6 +59,8 @@ export function NewTaskDialog({
           workspaceId={workspaceId}
           defaultStatus={defaultStatus}
           initialTitle={initialTitle}
+          choices={choices}
+          defaults={defaults}
           onCancel={() => setOpen(false)}
           onCreated={(task) => {
             setOpen(false);

@@ -65,6 +65,19 @@
   --priority-medium: #2f6fdf;
   --priority-high: #d92d2d;
 
+  /* Label palette: text-safe on its own 10% tint, like the state colors. Mirrors
+     the backend's `LabelColor`; a label stores the name, never the value. */
+  --label-gray: #5f5f6b;
+  --label-red: #c0262d;
+  --label-orange: #b4490b;
+  --label-yellow: #8a6300;
+  --label-green: #13703a;
+  --label-teal: #0e6b6b;
+  --label-blue: #1d5fc7;
+  --label-indigo: #4343b8;
+  --label-purple: #7a35ad;
+  --label-pink: #b42367;
+
   /* Elevation */
   --elevation-1: 0 1px 2px rgb(17 17 26 / 0.05);
   --elevation-2: 0 1px 3px rgb(17 17 26 / 0.08), 0 1px 2px rgb(17 17 26 / 0.04);
@@ -113,6 +126,17 @@
   --priority-medium: #60a5fa;
   --priority-high: #f87171;
 
+  --label-gray: #a3a3b2;
+  --label-red: #fca5a5;
+  --label-orange: #fdba74;
+  --label-yellow: #fde047;
+  --label-green: #86efac;
+  --label-teal: #5eead4;
+  --label-blue: #93c5fd;
+  --label-indigo: #a5b4fc;
+  --label-purple: #d8b4fe;
+  --label-pink: #f9a8d4;
+
   --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --elevation-2: 0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.02);
   --elevation-3: 0 10px 28px -6px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.03);
@@ -159,6 +183,17 @@
     --priority-medium: #60a5fa;
     --priority-high: #f87171;
 
+    --label-gray: #a3a3b2;
+    --label-red: #fca5a5;
+    --label-orange: #fdba74;
+    --label-yellow: #fde047;
+    --label-green: #86efac;
+    --label-teal: #5eead4;
+    --label-blue: #93c5fd;
+    --label-indigo: #a5b4fc;
+    --label-purple: #d8b4fe;
+    --label-pink: #f9a8d4;
+
     --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
     --elevation-2: 0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.02);
     --elevation-3: 0 10px 28px -6px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.03);
@@ -196,6 +231,16 @@
   --color-priority-low: var(--priority-low);
   --color-priority-medium: var(--priority-medium);
   --color-priority-high: var(--priority-high);
+  --color-label-gray: var(--label-gray);
+  --color-label-red: var(--label-red);
+  --color-label-orange: var(--label-orange);
+  --color-label-yellow: var(--label-yellow);
+  --color-label-green: var(--label-green);
+  --color-label-teal: var(--label-teal);
+  --color-label-blue: var(--label-blue);
+  --color-label-indigo: var(--label-indigo);
+  --color-label-purple: var(--label-purple);
+  --color-label-pink: var(--label-pink);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
