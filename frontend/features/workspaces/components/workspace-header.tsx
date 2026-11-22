@@ -62,7 +62,7 @@ export function WorkspaceHeader({ workspace }: { workspace: Workspace }) {
           <p>
             <span className="font-semibold">View mode.</span>{" "}
             {isCompany
-              ? "This company is suspended by the platform. Everyone in it can still see its tasks and people, but nothing can be added, changed or removed, and nobody can join or leave, until it is restored."
+              ? "This company is suspended by the platform. Everyone in it can still see its tasks, projects, comments and people, but nothing can be added, changed or removed, and nobody can join or leave, until it is restored."
               : "This workspace is suspended by the platform. You can still see your tasks, but nothing can be changed until it is restored."}
           </p>
         </div>

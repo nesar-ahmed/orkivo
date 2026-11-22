@@ -4,27 +4,29 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/select";
 import { changeMemberRole } from "@/features/workspaces/api/workspace-mutations";
-import {
-  ASSIGNABLE_ROLES,
-  WORKSPACE_ROLE_LABELS,
-} from "@/features/workspaces/workspace-utils";
+import { WORKSPACE_ROLE_LABELS } from "@/features/workspaces/workspace-utils";
 import { feedbackFromError } from "@/lib/api/form-feedback";
 import type { WorkspaceMember, WorkspaceRole } from "@/types/workspace";
 
 /**
- * Move someone between owner, admin and member.
+ * Move someone to another role.
  *
- * The value comes from the server, not local state: on success the re-read
- * supplies the new role, on failure the old one stays. Demoting the last owner is
- * refused by the API, and that refusal is what this control shows --- the rule is
- * not duplicated here.
+ * `roles` is what the caller may grant (the workspace's `grantable_roles`), so
+ * the control never offers a role the API would refuse on that ground. The value
+ * comes from the server, not local state: on success the re-read supplies the
+ * new role, on failure the old one stays. Demoting the last owner is refused by
+ * the API, and that refusal is what this control shows --- the rule is not
+ * duplicated here.
  */
 export function MemberRoleSelect({
   workspaceId,
   member,
+  roles,
 }: {
   workspaceId: string;
   member: WorkspaceMember;
+  /** The roles on offer, in rank order; the person's current role is one of them. */
+  roles: readonly WorkspaceRole[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -56,7 +58,7 @@ export function MemberRoleSelect({
         disabled={isPending}
         className="h-8 max-w-36 text-xs"
       >
-        {ASSIGNABLE_ROLES.map((role) => (
+        {roles.map((role) => (
           <option key={role} value={role}>
             {WORKSPACE_ROLE_LABELS[role]}
           </option>

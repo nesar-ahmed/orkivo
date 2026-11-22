@@ -3,6 +3,7 @@
 import { apiClient } from "@/lib/api/client";
 import type {
   InvitationListResponse,
+  InviteCandidateListResponse,
   InviteListResponse,
   MemberListResponse,
   TenantListResponse,
@@ -89,6 +90,20 @@ export function fetchMyInvitations(cookie?: string): Promise<InvitationListRespo
   return apiClient.get<InvitationListResponse>(
     "/workspaces/invitations",
     cookie ? { cookie } : {},
+  );
+}
+
+/**
+ * People the caller may invite into a company: colleagues matching `search` (all
+ * of them when it is empty), and anyone else only by their exact address. The
+ * caller is never listed. Owners and admins only.
+ */
+export function fetchInviteCandidates(
+  workspaceId: string,
+  search?: string,
+): Promise<InviteCandidateListResponse> {
+  return apiClient.get<InviteCandidateListResponse>(
+    `/workspaces/${workspaceId}/invite-candidates${query({ search })}`,
   );
 }
 

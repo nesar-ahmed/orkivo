@@ -59,8 +59,9 @@ export default async function PlatformTenantsPage({ searchParams }: PageProps) {
       </div>
 
       <p className="max-w-2xl text-xs text-muted-foreground">
-        Suspending puts a company in view mode: its members still see its tasks and people, but
-        nothing is added, changed or removed, and nobody joins or leaves. It is reversible and
+        Suspending puts a company in view mode: its members still see its tasks, projects,
+        comments and people, but nothing is added, changed or removed, and nobody joins or
+        leaves. It is reversible and
         deletes nothing. Private workspaces are never suspended &mdash; to stop an individual,
         disable the account under Accounts. Content belongs to the tenant, and no part of this
         console reads it.

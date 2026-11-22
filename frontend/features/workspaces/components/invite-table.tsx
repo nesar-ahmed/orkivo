@@ -30,7 +30,7 @@ export function InviteTable({
     return (
       <EmptyState
         title="No invitations"
-        description="Invite a colleague by email address; they accept it from their own profile."
+        description="Invite someone who has an Orkivo account; they accept it from their own profile."
       />
     );
   }

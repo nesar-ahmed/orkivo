@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  WORKSPACE_HOME_SECTION,
   WORKSPACE_ROLE_LABELS,
   findWorkspaceForPath,
   workspacePath,
@@ -48,7 +49,7 @@ export function WorkspaceSwitcher({
   const open = openOnPath === pathname;
 
   const current = findWorkspaceForPath(pathname, workspaces);
-  const section = workspaceRefFromPath(pathname)?.section ?? "tasks";
+  const section = workspaceRefFromPath(pathname)?.section ?? WORKSPACE_HOME_SECTION;
   const personal = workspaces.filter((workspace) => workspace.kind === "personal");
   const companies = workspaces.filter((workspace) => workspace.kind === "team");
 
@@ -77,7 +78,7 @@ export function WorkspaceSwitcher({
             <SwitcherItem
               key={workspace.id}
               workspace={workspace}
-              href={workspacePath(workspace)}
+              href={workspacePath(workspace, section)}
               current={current?.id === workspace.id}
             />
           ))}
@@ -150,7 +151,7 @@ export function WorkspaceMark({
   workspace,
   className,
 }: {
-  workspace: Workspace | null;
+  workspace: Pick<Workspace, "kind" | "name"> | null;
   className?: string;
 }) {
   if (workspace?.kind === "personal") {
@@ -181,6 +182,6 @@ export function WorkspaceMark({
   );
 }
 
-function switcherLabel(workspace: Workspace): string {
+function switcherLabel(workspace: Pick<Workspace, "kind" | "name">): string {
   return workspace.kind === "personal" ? "Private" : workspace.name;
 }

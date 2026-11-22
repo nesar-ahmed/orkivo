@@ -8,6 +8,7 @@ import {
   fetchInvites,
   fetchMembers,
   hasCapability,
+  invitableRoles,
   workspacePath,
 } from "@/features/workspaces";
 import { parsePageParam } from "@/lib/utils/page-param";
@@ -34,8 +35,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
  * Each read is authorized on its own. What is shown and offered follows the
  * workspace&rsquo;s capabilities from the backend&rsquo;s access policy: the
  * invitation history needs `view_invites`, the invite form `invite`, and the
- * member controls `change_roles` / `manage` / `leave`. In view mode (a suspended
- * company) everything stays visible and nothing can be changed.
+ * member controls `change_roles` / `manage` / `leave` --- each limited to the
+ * roles in `grantable_roles`. In view mode (a suspended company) everything stays
+ * visible and nothing can be changed.
  *
  * Both lists page independently (`?page=` and `?invites_page=`), so a large
  * company never hides anyone past an arbitrary cut-off.
@@ -64,13 +66,7 @@ export default async function CompanyPeoplePage({ params, searchParams }: PagePr
         <h2 id="members-heading" className="text-sm font-semibold text-card-foreground">
           People · {members.total}
         </h2>
-        <MemberTable
-          workspaceId={workspace.id}
-          members={members.items}
-          actorId={actor.id}
-          myRole={workspace.my_role}
-          capabilities={workspace.capabilities}
-        />
+        <MemberTable workspace={workspace} members={members.items} actorId={actor.id} />
         <Pagination
           page={members.page}
           pages={members.pages}
@@ -93,7 +89,7 @@ export default async function CompanyPeoplePage({ params, searchParams }: PagePr
             Invitations
           </h2>
           {canInvite ? (
-            <InviteForm workspaceId={workspace.id} />
+            <InviteForm workspaceId={workspace.id} roles={invitableRoles(workspace)} />
           ) : (
             <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground shadow-sm">
               {workspace.status === "suspended"

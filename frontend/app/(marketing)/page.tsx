@@ -15,7 +15,7 @@ const FEATURES = [
   },
   {
     title: "Your own space, or a company",
-    body: "Every account gets a private workspace the moment it registers. Open a company when you need one, add people by email address, and they join as member or admin from their own profile once they accept. Ownership is transferred by an owner, never handed out by an invitation.",
+    body: "Every account gets a private workspace the moment it registers. Open a company when you need one, invite people who already have an account, and they join as member or admin from their own profile once they accept. Ownership is transferred by an owner, never handed out by an invitation.",
   },
   {
     title: "Credentials that stay put",

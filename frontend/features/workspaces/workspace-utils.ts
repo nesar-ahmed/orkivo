@@ -7,6 +7,7 @@ import type {
   Workspace,
   WorkspaceCapability,
   WorkspaceKind,
+  WorkspaceMember,
   WorkspaceRole,
   WorkspaceStatus,
 } from "@/types/workspace";
@@ -19,22 +20,31 @@ export const WORKSPACE_KIND_LABELS: Record<WorkspaceKind, string> = {
 export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
   owner: "Owner",
   admin: "Admin",
+  manager: "Manager",
   member: "Member",
+  viewer: "Viewer",
 };
 
 export const WORKSPACE_ROLE_BADGES: Record<WorkspaceRole, BadgeVariant> = {
   owner: "primary",
   admin: "info",
+  manager: "success",
   member: "neutral",
+  viewer: "neutral",
 };
 
 /**
- * Roles a picker may offer. Ownership is excluded because it is transferred by an
- * existing owner and never granted by an invitation --- the backend's contract
- * says the same thing, so the control cannot present a choice that would fail.
+ * One line per role, for the pickers that hand one out. Copy for people choosing
+ * a role, not the rule: what a role may do is decided by the backend and arrives
+ * as `capabilities`.
  */
-export const ASSIGNABLE_ROLES: WorkspaceRole[] = ["owner", "admin", "member"];
-export const INVITABLE_ROLES: InvitableRole[] = ["member", "admin"];
+export const WORKSPACE_ROLE_DESCRIPTIONS: Record<WorkspaceRole, string> = {
+  owner: "Everything, including making owners and admins.",
+  admin: "Runs the company: its people, invitations and roles up to manager.",
+  manager: "Runs the work: every task, project and label.",
+  member: "Adds tasks and changes the ones they created or are assigned to.",
+  viewer: "Reads everything and changes nothing.",
+};
 
 export const WORKSPACE_STATUS_LABELS: Record<WorkspaceStatus, string> = {
   active: "Active",
@@ -89,8 +99,31 @@ export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$/;
 export const PERSONAL_WORKSPACE_PATH = "/app/personal";
 export const COMPANY_WORKSPACE_PREFIX = "/app/w";
 
-/** The pages every workspace URL can end in. A private workspace has no people page. */
-export type WorkspaceSection = "tasks" | "people";
+/**
+ * The pages every workspace URL can end in. A private workspace has no people or
+ * automations page: it has one person, and nobody is told about their own action.
+ */
+export type WorkspaceSection =
+  | "overview"
+  | "tasks"
+  | "projects"
+  | "labels"
+  | "activity"
+  | "people"
+  | "automations";
+
+/**
+ * The sections a workspace offers, in the order its tabs and sidebar show them.
+ * The overview comes first: it is where a workspace's own address lands.
+ */
+export function workspaceSections(kind: WorkspaceKind): WorkspaceSection[] {
+  return kind === "team"
+    ? ["overview", "tasks", "projects", "labels", "activity", "people", "automations"]
+    : ["overview", "tasks", "projects", "labels", "activity"];
+}
+
+/** Where a workspace's own address (`/app/w/acme`, `/app/personal`) lands. */
+export const WORKSPACE_HOME_SECTION: WorkspaceSection = "overview";
 
 /** Where a workspace's page lives. Falls back to tasks where a section does not apply. */
 export function workspacePath(
@@ -98,7 +131,8 @@ export function workspacePath(
   section: WorkspaceSection = "tasks",
 ): string {
   if (workspace.kind === "personal" || !workspace.slug) {
-    return `${PERSONAL_WORKSPACE_PATH}/tasks`;
+    const shared = section === "people" || section === "automations";
+    return `${PERSONAL_WORKSPACE_PATH}/${shared ? "tasks" : section}`;
   }
   return `${COMPANY_WORKSPACE_PREFIX}/${workspace.slug}/${section}`;
 }
@@ -125,13 +159,25 @@ export function normalizeSlug(raw: string): string {
 }
 
 export function workspaceRefFromPath(pathname: string): WorkspacePathRef | null {
-  const section: WorkspaceSection = /\/people(\/|$)/.test(pathname) ? "people" : "tasks";
+  const section = sectionFromPath(pathname);
   if (pathname === PERSONAL_WORKSPACE_PATH || pathname.startsWith(`${PERSONAL_WORKSPACE_PATH}/`)) {
-    return { kind: "personal", section: "tasks" };
+    const shared = section === "people" || section === "automations";
+    return { kind: "personal", section: shared ? "tasks" : section };
   }
   const match = pathname.match(/^\/app\/w\/([^/]+)/);
   if (match?.[1]) return { kind: "team", slug: normalizeSlug(match[1]), section };
   return null;
+}
+
+/** Which section of a workspace a path is in; anything unrecognised is its tasks. */
+function sectionFromPath(pathname: string): WorkspaceSection {
+  if (/\/overview(\/|$)/.test(pathname)) return "overview";
+  if (/\/people(\/|$)/.test(pathname)) return "people";
+  if (/\/automations(\/|$)/.test(pathname)) return "automations";
+  if (/\/projects(\/|$)/.test(pathname)) return "projects";
+  if (/\/labels(\/|$)/.test(pathname)) return "labels";
+  if (/\/activity(\/|$)/.test(pathname)) return "activity";
+  return "tasks";
 }
 
 /** The workspace a URL points at, among the ones the caller belongs to. */
@@ -164,4 +210,42 @@ export function hasCapability(
   capability: WorkspaceCapability,
 ): boolean {
   return workspace.capabilities.includes(capability);
+}
+
+/**
+ * Why a capability is missing, so a read-only screen can say the right thing:
+ * the whole company is in view mode, or the caller's role does not include it.
+ * Call it only once `hasCapability` has said no.
+ */
+export function readOnlyReason(workspace: Pick<Workspace, "status">): "suspended" | "role" {
+  return workspace.status === "suspended" ? "suspended" : "role";
+}
+
+/**
+ * Whether the backend says the caller may hand out `role` here right now --- and
+ * therefore change or end the membership of someone who holds it.
+ */
+export function canGrant(
+  workspace: Pick<Workspace, "grantable_roles">,
+  role: WorkspaceRole,
+): boolean {
+  return workspace.grantable_roles.includes(role);
+}
+
+/** The roles an invitation from the caller may offer: what they grant, never ownership. */
+export function invitableRoles(workspace: Pick<Workspace, "grantable_roles">): InvitableRole[] {
+  return workspace.grantable_roles.filter((role): role is InvitableRole => role !== "owner");
+}
+
+/**
+ * The roles a picker may offer for one person: what the caller may grant, if they
+ * may change this person's role at all --- otherwise none, and the role is shown
+ * rather than offered.
+ */
+export function assignableRoles(
+  workspace: Pick<Workspace, "capabilities" | "grantable_roles">,
+  member: Pick<WorkspaceMember, "role">,
+): WorkspaceRole[] {
+  if (!hasCapability(workspace, "change_roles") || !canGrant(workspace, member.role)) return [];
+  return workspace.grantable_roles;
 }

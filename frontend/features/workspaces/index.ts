@@ -14,6 +14,7 @@ export { WorkspaceHeader } from "./components/workspace-header";
 export { WorkspaceList } from "./components/workspace-list";
 export { WorkspaceSwitcher } from "./components/workspace-switcher";
 export {
+  fetchInviteCandidates,
   fetchInvites,
   fetchMembers,
   fetchMyInvitations,
@@ -40,25 +41,30 @@ export {
   suspendTenant,
 } from "./api/workspace-mutations";
 export {
-  ASSIGNABLE_ROLES,
-  INVITABLE_ROLES,
   INVITE_STATUS_BADGES,
   INVITE_STATUS_LABELS,
+  WORKSPACE_HOME_SECTION,
   WORKSPACE_KIND_LABELS,
   WORKSPACE_ROLE_BADGES,
+  WORKSPACE_ROLE_DESCRIPTIONS,
   WORKSPACE_ROLE_LABELS,
   WORKSPACE_STATUS_BADGES,
   WORKSPACE_STATUS_LABELS,
   COMPANY_WORKSPACE_PREFIX,
   PERSONAL_WORKSPACE_PATH,
   SLUG_PATTERN,
+  assignableRoles,
+  canGrant,
   findWorkspaceForPath,
   hasCapability,
+  invitableRoles,
   isShared,
   normalizeSlug,
+  readOnlyReason,
   taskPath,
   workspacePath,
   workspaceRefFromPath,
+  workspaceSections,
   workspaceTitle,
 } from "./workspace-utils";
 export type { WorkspaceSection } from "./workspace-utils";

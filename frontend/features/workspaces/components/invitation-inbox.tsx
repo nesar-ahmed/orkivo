@@ -8,7 +8,11 @@ import {
   acceptInvitation,
   declineInvitation,
 } from "@/features/workspaces/api/workspace-mutations";
-import { WORKSPACE_ROLE_LABELS, workspacePath } from "@/features/workspaces/workspace-utils";
+import {
+  WORKSPACE_HOME_SECTION,
+  WORKSPACE_ROLE_LABELS,
+  workspacePath,
+} from "@/features/workspaces/workspace-utils";
 import { feedbackFromError } from "@/lib/api/form-feedback";
 import { formatAccountDate } from "@/features/users/user-utils";
 import type { WorkspaceInvitation } from "@/types/workspace";
@@ -37,9 +41,9 @@ export function InvitationInbox({ invitations }: { invitations: WorkspaceInvitat
       try {
         if (action === "accept") {
           const joined = await acceptInvitation(invitation.id);
-          // Landing on the board you just joined reads better than a toast that
-          // says you are now somewhere you cannot see.
-          router.push(workspacePath(joined, "tasks"));
+          // Landing in the workspace you just joined reads better than a toast
+          // that says you are now somewhere you cannot see.
+          router.push(workspacePath(joined, WORKSPACE_HOME_SECTION));
         } else {
           await declineInvitation(invitation.id);
         }

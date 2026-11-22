@@ -6,31 +6,31 @@ import { formatAccountDate } from "@/features/users/user-utils";
 import {
   WORKSPACE_ROLE_BADGES,
   WORKSPACE_ROLE_LABELS,
+  assignableRoles,
+  canGrant,
+  hasCapability,
 } from "@/features/workspaces/workspace-utils";
-import type { WorkspaceCapability, WorkspaceMember, WorkspaceRole } from "@/types/workspace";
+import type { Workspace, WorkspaceMember } from "@/types/workspace";
 
 /**
  * A company's people.
  *
- * Which controls appear follows the workspace's `capabilities`, computed by the
- * backend's access policy: `change_roles`, `manage` (remove others) and `leave`.
- * In view mode (a suspended company) none of them is present, so the table is
- * read-only without restating that rule here. The one rule about the *target*
- * --- only an owner removes an owner --- mirrors the service. Each action is still
- * authorized per request (architecture doc 8.2).
+ * Which controls appear follows what the backend's access policy sent with the
+ * workspace: its `capabilities` (`change_roles`, `manage` to remove others,
+ * `leave`) and its `grantable_roles` --- the roles the caller may hand out, which
+ * are also the only roles whose holders they may move or remove. So an admin sees
+ * no controls on an owner's or another admin's row, and in view mode (a suspended
+ * company) nobody sees any, without restating either rule here. Each action is
+ * still authorized per request (architecture doc 8.2).
  */
 export function MemberTable({
-  workspaceId,
+  workspace,
   members,
   actorId,
-  myRole,
-  capabilities,
 }: {
-  workspaceId: string;
+  workspace: Pick<Workspace, "id" | "capabilities" | "grantable_roles">;
   members: WorkspaceMember[];
   actorId: string;
-  myRole: WorkspaceRole;
-  capabilities: readonly WorkspaceCapability[];
 }) {
   if (members.length === 0) {
     return (
@@ -41,9 +41,8 @@ export function MemberTable({
     );
   }
 
-  const mayChangeRoles = capabilities.includes("change_roles");
-  const mayRemoveOthers = capabilities.includes("manage");
-  const mayLeave = capabilities.includes("leave");
+  const mayRemoveOthers = hasCapability(workspace, "manage");
+  const mayLeave = hasCapability(workspace, "leave");
 
   return (
     // `relative` matters: screen-reader-only labels are absolutely positioned, and
@@ -75,7 +74,8 @@ export function MemberTable({
             const isActor = member.user_id === actorId;
             const mayRemove = isActor
               ? mayLeave
-              : mayRemoveOthers && (member.role !== "owner" || myRole === "owner");
+              : mayRemoveOthers && canGrant(workspace, member.role);
+            const roles = isActor ? [] : assignableRoles(workspace, member);
 
             return (
               <tr key={member.id}>
@@ -93,8 +93,8 @@ export function MemberTable({
                   </span>
                 </th>
                 <td className="px-4 py-3 align-top">
-                  {mayChangeRoles && !isActor ? (
-                    <MemberRoleSelect workspaceId={workspaceId} member={member} />
+                  {roles.length > 0 ? (
+                    <MemberRoleSelect workspaceId={workspace.id} member={member} roles={roles} />
                   ) : (
                     <Badge variant={WORKSPACE_ROLE_BADGES[member.role]}>
                       {WORKSPACE_ROLE_LABELS[member.role]}
@@ -107,7 +107,7 @@ export function MemberTable({
                 <td className="px-4 py-3 text-right align-top">
                   {mayRemove ? (
                     <RemoveMemberButton
-                      workspaceId={workspaceId}
+                      workspaceId={workspace.id}
                       member={member}
                       isActor={isActor}
                     />

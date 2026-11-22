@@ -12,8 +12,9 @@ import type { WorkspaceMember } from "@/types/workspace";
  *
  * A destructive control asks first --- with plain DOM state, not a dialog hook,
  * because the confirmation has to be part of the same accessible flow that
- * triggered it. The API still refuses the two things that must never succeed: an
- * admin removing the owner, and the last owner leaving.
+ * triggered it. The API still refuses the two things that must never succeed:
+ * removing someone whose role the caller could not have granted (an admin
+ * removing an owner or another admin), and the last owner leaving.
  */
 export function RemoveMemberButton({
   workspaceId,
