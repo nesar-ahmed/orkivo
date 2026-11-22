@@ -15,7 +15,7 @@ export const PASSWORD_MAX_LENGTH = 128;
  * board, directly. (`/app/dashboard` still redirects there, for old bookmarks,
  * but signing in should not cost an extra redirect.)
  */
-export const DEFAULT_POST_AUTH_PATH = "/app/personal/tasks";
+export const DEFAULT_POST_AUTH_PATH = "/app/personal/overview";
 
 /** Prefix of the authenticated product surface; `/` itself is public. */
 export const APP_PREFIX = "/app";
