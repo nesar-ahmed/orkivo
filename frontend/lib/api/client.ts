@@ -65,6 +65,12 @@ export interface RequestOptions {
   body?: unknown;
   /** Forwarded verbatim on server-rendered reads; omit in the browser. */
   cookie?: string;
+  /**
+   * Cancels the request, for reads that a newer one replaces (search as you type).
+   * A cancelled call rejects with the browser's own `AbortError`, never an
+   * `ApiError`: nothing failed, the answer is simply no longer wanted.
+   */
+  signal?: AbortSignal;
 }
 
 async function request<T>(
@@ -72,7 +78,7 @@ async function request<T>(
   options: RequestOptions = {},
   attempt: 0 | 1 = 0,
 ): Promise<T> {
-  const { method = "GET", body, cookie } = options;
+  const { method = "GET", body, cookie, signal } = options;
 
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -92,8 +98,10 @@ async function request<T>(
       // The session cookies are the credential: without this they are not sent
       // to the API's port.
       credentials: "include",
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw new ApiError(
       0,
       "NETWORK_ERROR",
@@ -221,7 +229,7 @@ function claimRenewal(): boolean {
 
 /** The single API client. Server code passes `cookie` to authenticate a read. */
 export const apiClient = {
-  get: <T>(path: string, options: Pick<RequestOptions, "cookie"> = {}) =>
+  get: <T>(path: string, options: Pick<RequestOptions, "cookie" | "signal"> = {}) =>
     request<T>(path, { ...options }),
   post: <T>(path: string, body: unknown, options: Pick<RequestOptions, "cookie"> = {}) =>
     request<T>(path, { method: "POST", body, ...options }),

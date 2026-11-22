@@ -64,6 +64,26 @@ export function DropdownMenuRadioItem({
   );
 }
 
+/**
+ * One option of a multi-select menu: Space or Enter toggles it, and it is
+ * announced as checked or not. Radix closes the menu on select; pass
+ * `onSelect={(event) => event.preventDefault()}` to keep it open for several.
+ */
+export function DropdownMenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof Menu.CheckboxItem>) {
+  return (
+    <Menu.CheckboxItem className={cn(itemStyles, "pr-8", className)} {...props}>
+      {children}
+      <Menu.ItemIndicator className="absolute right-2 flex items-center">
+        <Check aria-hidden="true" />
+      </Menu.ItemIndicator>
+    </Menu.CheckboxItem>
+  );
+}
+
 export function DropdownMenuSubTrigger({
   className,
   ...props

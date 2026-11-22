@@ -11,20 +11,33 @@ export type WorkspaceKind = "personal" | "team";
 
 export type WorkspaceStatus = "active" | "suspended";
 
-/** Authority inside one tenant. Distinct from the platform role in `auth.ts`. */
-export type WorkspaceRole = "owner" | "admin" | "member";
+/**
+ * Authority inside one tenant, most authority first. Distinct from the platform
+ * role in `auth.ts`. What each may do is the backend's decision, delivered as a
+ * workspace's `capabilities` --- never worked out from the role on this side.
+ */
+export type WorkspaceRole = "owner" | "admin" | "manager" | "member" | "viewer";
 
 export type InviteStatus = "pending" | "accepted" | "declined" | "revoked";
 
 /**
  * What the caller may do in a workspace right now, as decided by the backend's
  * access policy (`workspaces/access.py`). A suspended company is in view mode:
- * only `read` (and `view_invites` for managers) remain. A private workspace never
- * offers the group actions (`leave`, `invite`, `view_invites`, `change_roles`).
+ * only `read` (and `view_invites` for owners and admins) remain. A private
+ * workspace never offers the group actions (`leave`, `invite`, `view_invites`,
+ * `change_roles`).
+ *
+ * `edit_content` is adding tasks and changing one's *own*; which tasks those are
+ * is told per task (`Task.capabilities`). `manage_tasks` is changing anyone's.
  */
 export type WorkspaceCapability =
   | "read"
   | "edit_content"
+  | "comment"
+  | "manage_tasks"
+  | "manage_projects"
+  | "manage_labels"
+  | "manage_automations"
   | "leave"
   | "view_invites"
   | "manage"
@@ -47,6 +60,12 @@ export interface Workspace extends WorkspaceFields {
   my_role: WorkspaceRole;
   /** Rendering hint only: the API re-checks every request. */
   capabilities: WorkspaceCapability[];
+  /**
+   * Roles the caller may hand out here right now --- by invitation or by changing
+   * someone's role --- and so whose role they may change and whom they may
+   * remove. In rank order; empty when they may do neither. A rendering hint too.
+   */
+  grantable_roles: WorkspaceRole[];
 }
 
 export interface WorkspaceMember {
@@ -116,11 +135,33 @@ export interface WorkspaceUpdateInput {
 }
 
 /** What an invitation may offer. Ownership is never invited. */
-export type InvitableRole = "member" | "admin";
+export type InvitableRole = Exclude<WorkspaceRole, "owner">;
 
-export interface InviteInput {
+/**
+ * An offer to a registered account: named by `user_id` (what the invite picker
+ * sends) or by exact `email`. The API refuses anyone without an enabled account
+ * with 422 `INVITEE_NOT_REGISTERED`.
+ */
+export type InviteInput = ({ user_id: string } | { email: string }) & { role?: InvitableRole };
+
+/** Why the picker shows someone as not available to invite again. */
+export type CandidateStanding = "member" | "invited";
+
+/**
+ * Someone the invite picker may offer: a colleague (someone who shares a
+ * workspace with the caller) or anyone found by their exact address. Never the
+ * caller themselves.
+ */
+export interface InviteCandidate {
+  id: string;
+  display_name: string;
   email: string;
-  role?: InvitableRole;
+  standing: CandidateStanding | null;
+}
+
+/** Not paginated: the picker shows the best few matches and narrows as you type. */
+export interface InviteCandidateListResponse {
+  items: InviteCandidate[];
 }
 
 export interface MemberRoleUpdate {

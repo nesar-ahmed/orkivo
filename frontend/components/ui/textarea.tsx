@@ -1,8 +1,9 @@
-import { type TextareaHTMLAttributes } from "react";
+import { type ComponentProps } from "react";
 import { cn } from "@/lib/utils/cn";
 import { fieldStyles } from "./input";
 
-export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+/** Every `<textarea>` prop, `ref` included (a plain prop in React 19). */
+export interface TextareaProps extends ComponentProps<"textarea"> {
   className?: string;
 }
 

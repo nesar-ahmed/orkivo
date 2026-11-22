@@ -9,10 +9,21 @@
  */
 
 import { cookies } from "next/headers";
+import { TIMEZONE_COOKIE, isoDayIn } from "@/lib/time/viewer-day";
 
 /** The incoming ``Cookie`` header value, or ``undefined`` when there is none. */
 export async function getServerCookieHeader(): Promise<string | undefined> {
   const jar = await cookies();
   const pairs = jar.getAll().map(({ name, value }) => `${name}=${decodeURIComponent(value)}`);
   return pairs.length > 0 ? pairs.join("; ") : undefined;
+}
+
+/**
+ * Today on the visitor's own calendar (`YYYY-MM-DD`), from the time zone their
+ * browser keeps in a cookie; UTC until it has. See `lib/time/viewer-day.ts`.
+ */
+export async function getViewerToday(): Promise<string> {
+  const jar = await cookies();
+  const zone = jar.get(TIMEZONE_COOKIE)?.value;
+  return isoDayIn(zone ? decodeURIComponent(zone) : undefined);
 }
